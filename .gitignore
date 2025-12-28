@@ -1,0 +1,18 @@
+# Build artifacts
+obj/
+*.o
+*.a
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+*.gba
+libretro_raylib
+*.dylib
+*.sav

@@ -1,0 +1,183 @@
+/*
+ * libretro_frontend.h - Libretro Frontend API
+ *
+ * Copyright (c) 2024 mikedx
+ * GitHub: https://github.com/mikedx/libretro_raylib
+ *
+ * This file is part of libretro_raylib.
+ *
+ * libretro_raylib is free software: you can redistribute it and/or modify
+ * it under the terms of the MIT License.
+ *
+ * This header defines the frontend API for interfacing with libretro cores.
+ * The libretro API is available under the BSD 3-Clause License.
+ * See https://www.libretro.com/ for details.
+ */
+
+#ifndef LIBRETRO_FRONTEND_H
+#define LIBRETRO_FRONTEND_H
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+
+//=============================================================================
+// Libretro Device Constants
+//=============================================================================
+
+// Libretro device IDs
+#define RETRO_DEVICE_ID_JOYPAD_B 0
+#define RETRO_DEVICE_ID_JOYPAD_Y 1
+#define RETRO_DEVICE_ID_JOYPAD_SELECT 2
+#define RETRO_DEVICE_ID_JOYPAD_START 3
+#define RETRO_DEVICE_ID_JOYPAD_UP 4
+#define RETRO_DEVICE_ID_JOYPAD_DOWN 5
+#define RETRO_DEVICE_ID_JOYPAD_LEFT 6
+#define RETRO_DEVICE_ID_JOYPAD_RIGHT 7
+#define RETRO_DEVICE_ID_JOYPAD_A 8
+#define RETRO_DEVICE_ID_JOYPAD_X 9
+#define RETRO_DEVICE_ID_JOYPAD_L 10
+#define RETRO_DEVICE_ID_JOYPAD_R 11
+#define RETRO_DEVICE_ID_JOYPAD_L2 12
+#define RETRO_DEVICE_ID_JOYPAD_R2 13
+#define RETRO_DEVICE_ID_JOYPAD_L3 14
+#define RETRO_DEVICE_ID_JOYPAD_R3 15
+
+//=============================================================================
+// Forward Declarations
+//=============================================================================
+
+struct retro_core_t;
+
+//=============================================================================
+// Frontend Structure
+//=============================================================================
+
+/**
+ * Main frontend structure containing all state for libretro core management
+ */
+typedef struct {
+    void* core_handle;
+    struct retro_core_t* core;
+    
+    // Video
+    unsigned width;
+    unsigned height;
+    float aspect_ratio;
+    void* framebuffer;
+    size_t framebuffer_size;
+    unsigned pixel_format; // RETRO_PIXEL_FORMAT_*
+    
+    // Audio
+    float* audio_buffer;
+    size_t audio_buffer_size;
+    unsigned audio_sample_rate;
+    
+    // Audio ring buffer for streaming
+    float* audio_ring_buffer;
+    size_t audio_ring_buffer_size;  // Total capacity in frames
+    size_t audio_ring_read_pos;     // Read position (frames)
+    size_t audio_ring_write_pos;    // Write position (frames)
+    size_t audio_ring_available;     // Available frames to read
+    
+    // Input
+    bool input_state[16][16]; // [port][button]
+    
+    // Core state
+    bool initialized;
+    bool has_set_environment;
+    bool has_set_video_refresh;
+    bool has_set_audio_sample;
+    bool has_set_audio_sample_batch;
+    bool has_set_input_poll;
+    bool has_set_input_state;
+} libretro_frontend_t;
+
+//=============================================================================
+// Public API Functions
+//=============================================================================
+
+/**
+ * Initialize the libretro frontend
+ * @param frontend Pointer to frontend structure to initialize
+ * @return true on success, false on failure
+ */
+bool libretro_frontend_init(libretro_frontend_t* frontend);
+
+/**
+ * Load a libretro core from a dynamic library file
+ * @param frontend Pointer to initialized frontend structure
+ * @param core_path Path to the core .dylib file
+ * @return true on success, false on failure
+ */
+bool libretro_frontend_load_core(libretro_frontend_t* frontend, const char* core_path);
+
+/**
+ * Initialize the loaded libretro core
+ * @param frontend Pointer to frontend with loaded core
+ * @return true on success, false on failure
+ */
+bool libretro_frontend_init_core(libretro_frontend_t* frontend);
+
+/**
+ * Load a ROM file into the core
+ * @param frontend Pointer to initialized frontend
+ * @param rom_path Path to the ROM file
+ * @return true on success, false on failure
+ */
+bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_path);
+
+/**
+ * Update audio/video information from the core
+ * Should be called after loading a game or when core is initialized
+ * @param frontend Pointer to frontend structure
+ */
+void libretro_frontend_update_av_info(libretro_frontend_t* frontend);
+
+/**
+ * Run one frame of the core
+ * @param frontend Pointer to frontend structure
+ */
+void libretro_frontend_run_frame(libretro_frontend_t* frontend);
+
+/**
+ * Get the current video framebuffer
+ * @param frontend Pointer to frontend structure
+ * @return Pointer to framebuffer data (RGBA8888 format), or NULL if not available
+ */
+void* libretro_frontend_get_framebuffer(libretro_frontend_t* frontend);
+
+/**
+ * Get the current video dimensions
+ * @param frontend Pointer to frontend structure
+ * @param width Output parameter for width
+ * @param height Output parameter for height
+ */
+void libretro_frontend_get_video_size(libretro_frontend_t* frontend, unsigned* width, unsigned* height);
+
+/**
+ * Set input state for a joypad button
+ * @param frontend Pointer to frontend structure
+ * @param port Controller port (0-15)
+ * @param button Button ID (RETRO_DEVICE_ID_JOYPAD_*)
+ * @param pressed true if pressed, false if released
+ */
+void libretro_frontend_set_input(libretro_frontend_t* frontend, unsigned port, unsigned button, bool pressed);
+
+/**
+ * Get audio samples from the ring buffer for playback
+ * @param frontend Pointer to frontend structure
+ * @param buffer Output buffer for audio samples (interleaved stereo float)
+ * @param max_frames Maximum number of frames to read
+ * @return Number of frames actually read
+ */
+size_t libretro_frontend_get_audio_samples(libretro_frontend_t* frontend, float* buffer, size_t max_frames);
+
+/**
+ * Deinitialize and cleanup the frontend
+ * @param frontend Pointer to frontend structure to cleanup
+ */
+void libretro_frontend_deinit(libretro_frontend_t* frontend);
+
+#endif // LIBRETRO_FRONTEND_H
+
