@@ -67,6 +67,7 @@ typedef struct {
     void* framebuffer;
     size_t framebuffer_size;
     unsigned pixel_format; // RETRO_PIXEL_FORMAT_*
+    unsigned pixel_format_raw; // Original format value (for format 12 detection)
     
     // Audio
     float* audio_buffer;

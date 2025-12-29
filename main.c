@@ -78,7 +78,6 @@ int main(int argc, char* argv[]) {
     }
     
     // Load core
-    printf("Loading core: %s\n", core_path);
     if (!libretro_frontend_load_core(&frontend, core_path)) {
         fprintf(stderr, "Failed to load core\n");
         libretro_frontend_deinit(&frontend);
@@ -106,7 +105,6 @@ int main(int argc, char* argv[]) {
         // Update AV info after ROM is loaded (resolution may change)
         libretro_frontend_update_av_info(&frontend);
     } else {
-        printf("No ROM file provided. Core running without game.\n");
         // Update AV info even without a game
         libretro_frontend_update_av_info(&frontend);
     }
@@ -119,6 +117,9 @@ int main(int argc, char* argv[]) {
     int window_width = width * 3;  // Scale up for visibility
     int window_height = height * 3;
     
+    // Disable raylib debug output
+    SetTraceLogLevel(LOG_NONE);
+    
     InitWindow(window_width, window_height, "Libretro Player");
     
     // Set FPS based on core's reported FPS (updated after ROM load)
@@ -127,7 +128,6 @@ int main(int argc, char* argv[]) {
     if (target_fps < 1) target_fps = 60;
     if (target_fps > 120) target_fps = 120; // Cap at reasonable maximum
     SetTargetFPS(target_fps);
-    printf("Target FPS: %u (core reports %.2f)\n", target_fps, frontend.fps);
     
     // Initialize audio device (must be done before creating streams)
     InitAudioDevice();
@@ -155,7 +155,6 @@ int main(int argc, char* argv[]) {
                             (sample_rate >= 44100 && sample_rate <= 96000));
         
         if (!try_original && (sample_rate == 65536 || sample_rate == 32768)) {
-            printf("Warning: Core reports unusual sample rate %u Hz, trying 48000 Hz instead\n", frontend.audio_sample_rate);
             sample_rate = 48000;
         }
         
@@ -169,22 +168,15 @@ int main(int argc, char* argv[]) {
         
         if (IsAudioStreamReady(audio_stream)) {
             PlayAudioStream(audio_stream);
-            printf("Audio initialized: %u Hz, stereo\n", sample_rate);
             audio_stream_created = true;
         } else {
             // If original rate failed and it was unusual, try 48000 Hz fallback
             if (original_rate == 65536 || original_rate == 32768) {
-                fprintf(stderr, "Warning: Failed to initialize audio stream at %u Hz. Trying 48000 Hz instead.\n", sample_rate);
                 audio_stream = LoadAudioStream(48000, 32, 2);
                 if (IsAudioStreamReady(audio_stream)) {
                     PlayAudioStream(audio_stream);
-                    printf("Audio initialized: 48000 Hz (fallback), stereo\n");
                     audio_stream_created = true;
-                } else {
-                    fprintf(stderr, "Error: Failed to initialize audio stream at any rate\n");
                 }
-            } else {
-                fprintf(stderr, "Error: Failed to initialize audio stream at %u Hz\n", sample_rate);
             }
         }
     }
@@ -209,17 +201,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    printf("\nControls:\n");
-    printf("  Arrow Keys / WASD - D-Pad\n");
-    printf("  X - A button\n");
-    printf("  Z - B button\n");
-    printf("  C - X button\n");
-    printf("  V - Y button\n");
-    printf("  Q - L button\n");
-    printf("  E - R button\n");
-    printf("  TAB - Select\n");
-    printf("  ENTER - Start\n");
-    printf("  ESC - Exit\n\n");
     
     // Audio buffer for streaming
     float audio_buffer[4096 * 2]; // Stereo buffer

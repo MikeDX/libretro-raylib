@@ -94,6 +94,7 @@
 #define RETRO_PIXEL_FORMAT_0RGB1555 0
 #define RETRO_PIXEL_FORMAT_XRGB8888 1
 #define RETRO_PIXEL_FORMAT_RGB565 2
+#define RETRO_PIXEL_FORMAT_RGB555 12  // RGB555 format used by snes9x (Red-Green-Blue, 5-5-5 bits, bit 15 unused)
 
 #define RETRO_DEVICE_NONE 0
 #define RETRO_DEVICE_JOYPAD 1
@@ -263,6 +264,11 @@ static void retro_input_poll_callback(void);
  */
 static int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned index, unsigned id);
 
+/**
+ * Flush any remaining samples in the single-sample audio buffer
+ */
+static void flush_single_sample_buffer(void);
+
 //=============================================================================
 // Global State
 //=============================================================================
@@ -308,6 +314,7 @@ bool libretro_frontend_init(libretro_frontend_t* frontend) {
     frontend->audio_ring_available = 0;
     
     frontend->pixel_format = RETRO_PIXEL_FORMAT_XRGB8888; // Default
+    frontend->pixel_format_raw = RETRO_PIXEL_FORMAT_XRGB8888;
     
     g_frontend = frontend;
     
@@ -421,15 +428,12 @@ bool libretro_frontend_init_core(libretro_frontend_t* frontend) {
     if (frontend->core->retro_get_system_info) {
         frontend->core->retro_get_system_info(&info);
         frontend->need_fullpath = info.need_fullpath;
-        printf("Core: %s %s\n", info.library_name, info.library_version);
-        printf("Core need_fullpath: %s\n", info.need_fullpath ? "yes" : "no");
+        fprintf(stderr, "Core: %s %s\n", info.library_name, info.library_version);
     }
     
     // Initialize the core
     if (frontend->core->retro_init) {
-        printf("Calling retro_init...\n");
         frontend->core->retro_init();
-        printf("retro_init completed\n");
     }
     
     // Set controller device
@@ -476,8 +480,6 @@ void libretro_frontend_update_av_info(libretro_frontend_t* frontend) {
         }
         
         frontend->fps = av_info.timing.fps;
-        printf("Video: %ux%u (aspect: %.2f, fps: %.2f)\n", frontend->width, frontend->height, frontend->aspect_ratio, frontend->fps);
-        printf("Audio: %.0f Hz\n", av_info.timing.sample_rate);
         
         // Allocate/reallocate framebuffer
         size_t new_size = frontend->width * frontend->height * 4; // RGBA
@@ -521,7 +523,6 @@ bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_p
         game_info.data = NULL;
         game_info.size = 0;
         game_info.meta = NULL;
-        printf("Core requires fullpath - passing path only: %s\n", abs_path);
     } else {
         // Core wants data in memory
         FILE* file = fopen(abs_path, "rb");
@@ -567,13 +568,10 @@ bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_p
         game_info.size = (size_t)file_size;
         game_info.meta = NULL;
         
-        printf("Passing ROM data to core: %s (%zu bytes)\n", abs_path, (size_t)file_size);
     }
     
     // Load the game
-    printf("Calling retro_load_game...\n");
     bool success = frontend->core->retro_load_game(&game_info);
-    printf("retro_load_game returned: %s\n", success ? "true" : "false");
     
     if (!success) {
         fprintf(stderr, "Failed to load ROM - core returned false\n");
@@ -589,7 +587,6 @@ bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_p
     frontend->rom_data_size = frontend->need_fullpath ? 0 : game_info.size;
     frontend->rom_path = abs_path;
     
-    printf("Loaded ROM: %s (%zu bytes)\n", abs_path, frontend->need_fullpath ? 0 : game_info.size);
     
     // Update AV info after game is loaded (resolution may change)
     libretro_frontend_update_av_info(frontend);
@@ -607,6 +604,10 @@ void libretro_frontend_run_frame(libretro_frontend_t* frontend) {
     if (frontend->core->retro_run) {
         frontend->core->retro_run();
     }
+    
+    // Flush any accumulated single-sample audio after each frame
+    // This ensures cores using retro_audio_sample_callback don't lose samples
+    flush_single_sample_buffer();
 }
 
 /**
@@ -703,7 +704,6 @@ size_t libretro_frontend_get_audio_samples(libretro_frontend_t* frontend, float*
     
     static int read_count = 0;
     if (read_count++ < 5 && frames_to_read > 0) {
-        printf("Reading audio: %zu frames available, reading %zu\n", frontend->audio_ring_available, frames_to_read);
     }
     
     if (frames_to_read == 0) return 0;
@@ -748,24 +748,35 @@ static bool retro_environment_callback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
             unsigned* format = (unsigned*)data;
             if (g_frontend) {
-                g_frontend->pixel_format = *format;
-                const char* format_name = "Unknown";
                 switch (*format) {
-                    case RETRO_PIXEL_FORMAT_0RGB1555: format_name = "0RGB1555"; break;
-                    case RETRO_PIXEL_FORMAT_XRGB8888: format_name = "XRGB8888"; break;
-                    case RETRO_PIXEL_FORMAT_RGB565: format_name = "RGB565"; break;
+                    case RETRO_PIXEL_FORMAT_0RGB1555: 
+                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
+                        g_frontend->pixel_format_raw = *format;
+                        fprintf(stderr, "Pixel format: 0RGB1555 (format 0) - R=bits 10-14, G=bits 5-9, B=bits 0-4\n");
+                        break;
+                    case RETRO_PIXEL_FORMAT_XRGB8888: 
+                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
+                        g_frontend->pixel_format_raw = *format;
+                        fprintf(stderr, "Pixel format: XRGB8888 (format 1) - 32-bit\n");
+                        break;
+                    case RETRO_PIXEL_FORMAT_RGB565: 
+                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+                        g_frontend->pixel_format_raw = *format;
+                        fprintf(stderr, "Pixel format: RGB565 (format 2) - R=bits 11-15, G=bits 5-10, B=bits 0-4\n");
+                        break;
+                    case RETRO_PIXEL_FORMAT_RGB555:
+                        // Format 12: Treat as RGB565 (5-6-5 bits) used by snes9x
+                        // snes9x uses RGB565 format but reports it as format 12
+                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+                        g_frontend->pixel_format_raw = 12; // Store original format
+                        fprintf(stderr, "Pixel format: RGB565 (format 12 from snes9x) - R=bits 11-15, G=bits 5-10, B=bits 0-4\n");
+                        break;
                     default:
-                        // Unknown format - default to XRGB8888
-                        if (*format == 12) {
-                            printf("Warning: Core requested unsupported pixel format: 12\n");
-                            printf("Supported formats: 0 (0RGB1555), 1 (XRGB8888), 2 (RGB565)\n");
-                            printf("Using XRGB8888 instead\n");
-                            g_frontend->pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
-                            format_name = "XRGB8888 (fallback)";
-                        }
+                        // Unknown format - default to RGB565
+                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+                        g_frontend->pixel_format_raw = *format;
                         break;
                 }
-                printf("Core requested pixel format: %u (%s)\n", *format, format_name);
             }
             return true;
         }
@@ -826,13 +837,9 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
     if (!g_frontend || !data) return;
     
     static int frame_count = 0;
-    if (frame_count++ < 3) {
-        printf("Video refresh[%d]: %ux%u, pitch=%zu, format=%u, bytes_per_pixel=%d\n", 
-               frame_count, width, height, pitch, g_frontend->pixel_format,
-               g_frontend->pixel_format == RETRO_PIXEL_FORMAT_RGB565 ? 2 : 4);
-        printf("  Expected pitch: %zu, actual: %zu, pixels_per_line: %zu\n",
-               (size_t)(width * (g_frontend->pixel_format == RETRO_PIXEL_FORMAT_RGB565 ? 2 : 4)),
-               pitch, pitch / (g_frontend->pixel_format == RETRO_PIXEL_FORMAT_RGB565 ? 2 : 4));
+    if (frame_count++ == 0) {
+        fprintf(stderr, "Video refresh: %ux%u, pitch=%zu, format=%u (raw=%u)\n", 
+                width, height, pitch, g_frontend->pixel_format, g_frontend->pixel_format_raw);
     }
     
     // Update dimensions if changed
@@ -865,56 +872,65 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
     switch (g_frontend->pixel_format) {
         case RETRO_PIXEL_FORMAT_XRGB8888: {
             // XRGB8888: 32-bit, pitch is in bytes
-            // If pitch=512 and width=240, check if it's actually RGB565
-            // 512/2 = 256 pixels (close to 240), vs 512/4 = 128 pixels
+            // Some cores (like SNES) report XRGB8888 but actually send RGB565
+            // Detect this by checking if pitch matches 16-bit format better than 32-bit
             
-            size_t pixels_from_pitch_16bit = pitch / 2;
-            bool likely_rgb565 = (pixels_from_pitch_16bit >= width - 10 && pixels_from_pitch_16bit <= width + 20);
+            size_t expected_pitch_32bit = width * 4;
+            size_t expected_pitch_16bit = width * 2;
+            size_t pitch_diff_32bit = (pitch > expected_pitch_32bit) ? (pitch - expected_pitch_32bit) : (expected_pitch_32bit - pitch);
+            size_t pitch_diff_16bit = (pitch > expected_pitch_16bit) ? (pitch - expected_pitch_16bit) : (expected_pitch_16bit - pitch);
             
-            if (likely_rgb565 && frame_count <= 3) {
-                printf("  WARNING: Format says XRGB8888 but pitch suggests RGB565! Treating as RGB565.\n");
-            }
+            // If pitch is much closer to 16-bit than 32-bit, treat as RGB565
+            // Also check if pitch is exactly width*2 or close to it
+            bool likely_rgb565 = (pitch_diff_16bit < pitch_diff_32bit && pitch_diff_16bit <= 32) || 
+                                 (pitch == expected_pitch_16bit) ||
+                                 (pitch % 2 == 0 && pitch / 2 >= width - 4 && pitch / 2 <= width + 4);
+            
             
             if (likely_rgb565) {
                 // Treat as RGB565 even though format says XRGB8888
+                // All RGB565 formats need R/B swap
                 for (unsigned y = 0; y < height; y++) {
                     const uint8_t* src_line = (const uint8_t*)data + y * pitch;
-                    uint8_t* dst_line = (uint8_t*)(dst + y * width);
+                    uint32_t* dst_line = dst + y * width;
                     
                     for (unsigned x = 0; x < width; x++) {
                         const uint16_t* src_pixel = (const uint16_t*)(src_line + x * 2);
-                        uint8_t* dst_pixel = dst_line + x * 4;
-                        
                         uint16_t pixel = *src_pixel;
+                        
+                        // Extract RGB565 components
                         uint8_t r = ((pixel >> 11) & 0x1F) << 3;
                         uint8_t g = ((pixel >> 5) & 0x3F) << 2;
                         uint8_t b = (pixel & 0x1F) << 3;
                         
-                        dst_pixel[0] = r;   // R
-                        dst_pixel[1] = g;   // G
-                        dst_pixel[2] = b;   // B
-                        dst_pixel[3] = 0xFF; // A
+                        // Convert to RGBA8888 - swap R/B for all RGB565 formats
+                        dst_line[x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
                     }
                 }
             } else {
                 // Normal XRGB8888 handling
+                // On little-endian: bytes are [B, G, R, X] when read sequentially
                 for (unsigned y = 0; y < height; y++) {
                     const uint8_t* src_line = (const uint8_t*)data + y * pitch;
-                    uint8_t* dst_line = (uint8_t*)(dst + y * width);
+                    uint32_t* dst_line = dst + y * width;
                     
                     for (unsigned x = 0; x < width; x++) {
                         const uint8_t* src_pixel = src_line + x * 4;
-                        uint8_t* dst_pixel = dst_line + x * 4;
                         
-                        // XRGB8888: [B, G, R, X] -> RGBA8888: [R, G, B, A]
-                        uint8_t b = src_pixel[0];
-                        uint8_t g = src_pixel[1];
-                        uint8_t r = src_pixel[2];
+                        // XRGB8888: bytes [B, G, R, X] -> RGBA8888: [R, G, B, A]
+                        // Note: libretro XRGB8888 might be [R, G, B, X] instead
+                        uint8_t byte0 = src_pixel[0];
+                        uint8_t byte1 = src_pixel[1];
+                        uint8_t byte2 = src_pixel[2];
                         
-                        dst_pixel[0] = r;   // R
-                        dst_pixel[1] = g;   // G
-                        dst_pixel[2] = b;   // B
-                        dst_pixel[3] = 0xFF; // A
+                        // Try swapping: if it's [B, G, R], swap to [R, G, B]
+                        // If it's already [R, G, B], this will swap it back - test both
+                        uint8_t r = byte2;  // Assume [B, G, R] format
+                        uint8_t g = byte1;
+                        uint8_t b = byte0;
+                        
+                        // Convert to RGBA8888 - swap red and blue channels
+                        dst_line[x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
                     }
                 }
             }
@@ -922,6 +938,8 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
         }
         case RETRO_PIXEL_FORMAT_RGB565: {
             // RGB565: 16-bit, pitch is in bytes
+            // Both format 2 (mGBA) and format 12 (snes9x) need R/B swap
+            
             size_t expected_pitch = width * 2;
             for (unsigned y = 0; y < height; y++) {
                 const uint8_t* src_bytes = (const uint8_t*)data + y * pitch;
@@ -932,22 +950,28 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
                     const uint16_t* src_line = (const uint16_t*)src_bytes;
                     for (unsigned x = 0; x < width; x++) {
                         uint16_t pixel = src_line[x];
-                        // Extract RGB565 components (little-endian)
+                        
+                        // Extract RGB565 components (5-6-5 bits)
                         uint8_t r = ((pixel >> 11) & 0x1F) << 3;
                         uint8_t g = ((pixel >> 5) & 0x3F) << 2;
                         uint8_t b = (pixel & 0x1F) << 3;
-                        // Convert to RGBA8888
-                        dst_line[x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+                        // Convert to RGBA8888 for raylib: bytes [R, G, B, A] in memory (little-endian)
+                        // Write as: (A << 24) | (B << 16) | (G << 8) | R
+                        dst_line[x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
                     }
                 } else {
                     // Slow path: handle variable pitch
                     for (unsigned x = 0; x < width; x++) {
                         const uint16_t* pixel_ptr = (const uint16_t*)(src_bytes + x * 2);
                         uint16_t pixel = *pixel_ptr;
+                        
+                        // Extract RGB565 components (5-6-5 bits)
                         uint8_t r = ((pixel >> 11) & 0x1F) << 3;
                         uint8_t g = ((pixel >> 5) & 0x3F) << 2;
                         uint8_t b = (pixel & 0x1F) << 3;
-                        dst_line[x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+                        // Convert to RGBA8888 for raylib: bytes [R, G, B, A] in memory (little-endian)
+                        // Write as: (A << 24) | (B << 16) | (G << 8) | R
+                        dst_line[x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
                     }
                 }
             }
@@ -955,17 +979,18 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
         }
         case RETRO_PIXEL_FORMAT_0RGB1555: {
             // 0RGB1555: 16-bit, pitch is in bytes
+            // Format: 0RGB1555 (5-5-5 bits, bit 15 unused)
             for (unsigned y = 0; y < height; y++) {
                 const uint16_t* src_line = (const uint16_t*)((const char*)data + y * pitch);
                 uint32_t* dst_line = dst + y * width;
                 for (unsigned x = 0; x < width; x++) {
                     uint16_t pixel = src_line[x];
-                    // Extract 0RGB1555 components
+                    // Extract 0RGB1555 components: R=bits 10-14, G=bits 5-9, B=bits 0-4
                     uint8_t r = ((pixel >> 10) & 0x1F) << 3;
                     uint8_t g = ((pixel >> 5) & 0x1F) << 3;
                     uint8_t b = (pixel & 0x1F) << 3;
-                    // Convert to RGBA8888
-                    dst_line[x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+                    // Convert to RGBA8888 for raylib: bytes [R, G, B, A] in memory
+                    dst_line[x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
                 }
             }
             break;
@@ -976,11 +1001,38 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
     }
 }
 
+// Single-sample audio accumulator for cores that use retro_audio_sample_callback
+#define SINGLE_SAMPLE_BUFFER_SIZE 512
+#define SINGLE_SAMPLE_FLUSH_THRESHOLD 64  // Flush more frequently to reduce latency
+static int16_t single_sample_buffer[SINGLE_SAMPLE_BUFFER_SIZE * 2]; // Stereo
+static size_t single_sample_count = 0;
+
 static void retro_audio_sample_callback(int16_t left, int16_t right) {
-    (void)left;
-    (void)right;
-    // Single sample callback - less efficient, but some cores use it
-    // We'll handle audio in the batch callback instead
+    if (!g_frontend) return;
+    
+    // Debug output disabled
+    
+    // Accumulate samples in buffer
+    if (single_sample_count < SINGLE_SAMPLE_BUFFER_SIZE) {
+        single_sample_buffer[single_sample_count * 2] = left;
+        single_sample_buffer[single_sample_count * 2 + 1] = right;
+        single_sample_count++;
+    }
+    
+    // Flush when buffer reaches threshold or is full to reduce latency
+    if (single_sample_count >= SINGLE_SAMPLE_FLUSH_THRESHOLD) {
+        retro_audio_sample_batch_callback(single_sample_buffer, single_sample_count);
+        single_sample_count = 0;
+    }
+}
+
+// Flush any remaining samples in the single-sample buffer
+// Should be called periodically (e.g., after each frame)
+static void flush_single_sample_buffer(void) {
+    if (single_sample_count > 0 && g_frontend) {
+        retro_audio_sample_batch_callback(single_sample_buffer, single_sample_count);
+        single_sample_count = 0;
+    }
 }
 
 /**
@@ -999,12 +1051,6 @@ static size_t retro_audio_sample_batch_callback(const int16_t* data, size_t fram
     // Convert int16_t samples to float and add to ring buffer
     size_t available_space = g_frontend->audio_ring_buffer_size - g_frontend->audio_ring_available;
     size_t frames_to_write = (frames < available_space) ? frames : available_space;
-    
-    static int audio_callback_count = 0;
-    if (audio_callback_count++ < 5) {
-        printf("Audio callback[%d]: received %zu frames, writing %zu, available space: %zu\n", 
-               audio_callback_count, frames, frames_to_write, available_space);
-    }
     
     if (frames_to_write == 0) {
         // Buffer full - this is bad, means we're not reading fast enough
