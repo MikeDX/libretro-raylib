@@ -26,6 +26,20 @@ This project uses the following third-party libraries:
 - raylib installed in `../raylib/src`
 - A libretro core (`.dylib` file) for your target platform
 
+### Downloading Cores
+
+You can use the included script to download cores:
+
+```bash
+./download_cores.sh
+```
+
+This will:
+- Fetch the list of available cores from the libretro buildbot
+- Display them in a menu
+- Allow you to download individual cores or all cores
+- Save them to the `cores/` directory
+
 ### Build Instructions
 
 ```bash
@@ -43,11 +57,14 @@ This will create the `libretro_raylib` executable.
 ### Examples
 
 ```bash
-# Load a core with a ROM file
-./libretro_raylib mgba_libretro.dylib mike_test.gba
+# Load a core with a ROM file (using downloaded core)
+./libretro_raylib cores/mgba_libretro.dylib mike_test.gba
 
 # Load a core without a ROM (for cores that support no-game mode)
-./libretro_raylib mgba_libretro.dylib
+./libretro_raylib cores/mgba_libretro.dylib
+
+# Or use a core from any location
+./libretro_raylib /path/to/core.dylib /path/to/rom.gba
 ```
 
 ## Controls

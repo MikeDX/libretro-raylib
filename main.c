@@ -103,6 +103,8 @@ int main(int argc, char* argv[]) {
             libretro_frontend_deinit(&frontend);
             return 1;
         }
+        // Update AV info after ROM is loaded (resolution may change)
+        libretro_frontend_update_av_info(&frontend);
     } else {
         printf("No ROM file provided. Core running without game.\n");
         // Update AV info even without a game
@@ -118,7 +120,14 @@ int main(int argc, char* argv[]) {
     int window_height = height * 3;
     
     InitWindow(window_width, window_height, "Libretro Player");
-    SetTargetFPS(60);
+    
+    // Set FPS based on core's reported FPS (updated after ROM load)
+    // Use the FPS from the frontend which was set by update_av_info
+    unsigned target_fps = (unsigned)(frontend.fps > 0 ? frontend.fps + 0.5 : 60.0);
+    if (target_fps < 1) target_fps = 60;
+    if (target_fps > 120) target_fps = 120; // Cap at reasonable maximum
+    SetTargetFPS(target_fps);
+    printf("Target FPS: %u (core reports %.2f)\n", target_fps, frontend.fps);
     
     // Initialize audio device (must be done before creating streams)
     InitAudioDevice();
@@ -223,21 +232,21 @@ int main(int argc, char* argv[]) {
         // Run one frame of the core
         libretro_frontend_run_frame(&frontend);
         
-        // Update audio stream - feed audio every frame to prevent underruns
+        // Update audio stream - feed audio aggressively to prevent underruns
         // This is critical for smooth audio playback
         if (audio_stream_created) {
-            // Feed audio whenever the stream needs it
-            // UpdateAudioStream can be called even when not processed, but we check first
-            // to avoid unnecessary work
-            if (IsAudioStreamProcessed(audio_stream)) {
+            // Feed audio whenever the stream needs it - check multiple times per frame
+            // to ensure buffer stays full
+            while (IsAudioStreamProcessed(audio_stream)) {
                 // Buffer needs refill - read as much as we can to fill it up
                 size_t frames_read = libretro_frontend_get_audio_samples(&frontend, audio_buffer, 4096);
                 if (frames_read > 0) {
                     UpdateAudioStream(audio_stream, audio_buffer, (int)frames_read);
+                } else {
+                    // No audio available, break to avoid busy loop
+                    break;
                 }
             }
-            // Note: We don't feed when not processed to avoid overfilling the stream buffer
-            // The ring buffer provides enough buffering to handle timing variations
         }
         
         // Update texture with new frame data

@@ -46,18 +46,18 @@
 #define RETRO_ENVIRONMENT_GET_VARIABLE 13
 #define RETRO_ENVIRONMENT_SET_VARIABLES 14
 #define RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE 15
-#define RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME 16
-#define RETRO_ENVIRONMENT_GET_LIBRETRO_PATH 17
-#define RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK 18
-#define RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK 19
-#define RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE 20
-#define RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES 21
-#define RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE 22
-#define RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE 23
-#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE 24
-#define RETRO_ENVIRONMENT_GET_PERF_INTERFACE 25
-#define RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE 26
-#define RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY 27
+#define RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME 18
+#define RETRO_ENVIRONMENT_GET_LIBRETRO_PATH 19
+#define RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK 21
+#define RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK 22
+#define RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE 23
+#define RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES 24
+#define RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE 25
+#define RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE 26
+#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE 27
+#define RETRO_ENVIRONMENT_GET_PERF_INTERFACE 28
+#define RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE 29
+#define RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY 30
 #define RETRO_ENVIRONMENT_SET_CORE_OPTIONS 28
 #define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL 29
 #define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY 30
@@ -77,7 +77,7 @@
 #define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK 44
 #define RETRO_ENVIRONMENT_SET_VARIABLE 45
 #define RETRO_ENVIRONMENT_GET_THROTTLE_STATE 46
-#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY 47
+#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY 31
 #define RETRO_ENVIRONMENT_SET_BLOCK_EXTract 48
 #define RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT 49
 #define RETRO_ENVIRONMENT_GET_VFS_INTERFACE 50
@@ -295,6 +295,7 @@ bool libretro_frontend_init(libretro_frontend_t* frontend) {
     frontend->height = 240;
     frontend->aspect_ratio = 4.0f / 3.0f;
     frontend->audio_sample_rate = 44100;
+    frontend->fps = 60.0;
     frontend->audio_buffer_size = 4096;
     frontend->audio_buffer = (float*)malloc(frontend->audio_buffer_size * sizeof(float) * 2);
     
@@ -419,12 +420,16 @@ bool libretro_frontend_init_core(libretro_frontend_t* frontend) {
     struct retro_system_info info;
     if (frontend->core->retro_get_system_info) {
         frontend->core->retro_get_system_info(&info);
+        frontend->need_fullpath = info.need_fullpath;
         printf("Core: %s %s\n", info.library_name, info.library_version);
+        printf("Core need_fullpath: %s\n", info.need_fullpath ? "yes" : "no");
     }
     
     // Initialize the core
     if (frontend->core->retro_init) {
+        printf("Calling retro_init...\n");
         frontend->core->retro_init();
+        printf("retro_init completed\n");
     }
     
     // Set controller device
@@ -470,7 +475,8 @@ void libretro_frontend_update_av_info(libretro_frontend_t* frontend) {
             frontend->audio_ring_available = 0;
         }
         
-        printf("Video: %ux%u (aspect: %.2f)\n", frontend->width, frontend->height, frontend->aspect_ratio);
+        frontend->fps = av_info.timing.fps;
+        printf("Video: %ux%u (aspect: %.2f, fps: %.2f)\n", frontend->width, frontend->height, frontend->aspect_ratio, frontend->fps);
         printf("Audio: %.0f Hz\n", av_info.timing.sample_rate);
         
         // Allocate/reallocate framebuffer
@@ -498,65 +504,95 @@ bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_p
         return false;
     }
     
-    // Read ROM file
-    FILE* file = fopen(rom_path, "rb");
-    if (!file) {
-        fprintf(stderr, "Failed to open ROM file: %s\n", rom_path);
+    // Get absolute path (needed for need_fullpath cores)
+    char* abs_path = realpath(rom_path, NULL);
+    if (!abs_path) {
+        fprintf(stderr, "Failed to get absolute path for ROM: %s\n", rom_path);
         return false;
     }
     
-    // Get file size
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    struct retro_game_info game_info = {0};
+    void* rom_data = NULL;
+    size_t rom_data_size = 0;
     
-    if (file_size <= 0) {
-        fprintf(stderr, "Invalid ROM file size\n");
+    if (frontend->need_fullpath) {
+        // Core wants path only, not data in memory
+        game_info.path = abs_path;
+        game_info.data = NULL;
+        game_info.size = 0;
+        game_info.meta = NULL;
+        printf("Core requires fullpath - passing path only: %s\n", abs_path);
+    } else {
+        // Core wants data in memory
+        FILE* file = fopen(abs_path, "rb");
+        if (!file) {
+            fprintf(stderr, "Failed to open ROM file: %s\n", abs_path);
+            free(abs_path);
+            return false;
+        }
+        
+        // Get file size
+        fseek(file, 0, SEEK_END);
+        long file_size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+        
+        if (file_size <= 0) {
+            fprintf(stderr, "Invalid ROM file size\n");
+            fclose(file);
+            free(abs_path);
+            return false;
+        }
+        
+        // Allocate buffer and read ROM
+        rom_data = malloc(file_size);
+        if (!rom_data) {
+            fprintf(stderr, "Failed to allocate memory for ROM\n");
+            fclose(file);
+            free(abs_path);
+            return false;
+        }
+        
+        size_t bytes_read = fread(rom_data, 1, file_size, file);
         fclose(file);
-        return false;
+        
+        if (bytes_read != (size_t)file_size) {
+            fprintf(stderr, "Failed to read ROM file completely\n");
+            free(rom_data);
+            free(abs_path);
+            return false;
+        }
+        
+        game_info.path = abs_path;
+        game_info.data = rom_data;
+        game_info.size = (size_t)file_size;
+        game_info.meta = NULL;
+        
+        printf("Passing ROM data to core: %s (%zu bytes)\n", abs_path, (size_t)file_size);
     }
-    
-    // Allocate buffer and read ROM
-    void* rom_data = malloc(file_size);
-    if (!rom_data) {
-        fprintf(stderr, "Failed to allocate memory for ROM\n");
-        fclose(file);
-        return false;
-    }
-    
-    size_t bytes_read = fread(rom_data, 1, file_size, file);
-    fclose(file);
-    
-    if (bytes_read != (size_t)file_size) {
-        fprintf(stderr, "Failed to read ROM file completely\n");
-        free(rom_data);
-        return false;
-    }
-    
-    // Prepare game info
-    struct retro_game_info game_info = {
-        .path = rom_path,
-        .data = rom_data,
-        .size = (size_t)file_size,
-        .meta = NULL
-    };
     
     // Load the game
+    printf("Calling retro_load_game...\n");
     bool success = frontend->core->retro_load_game(&game_info);
+    printf("retro_load_game returned: %s\n", success ? "true" : "false");
     
     if (!success) {
-        fprintf(stderr, "Failed to load ROM\n");
-        free(rom_data);
+        fprintf(stderr, "Failed to load ROM - core returned false\n");
+        if (rom_data) {
+            free(rom_data);
+        }
+        free(abs_path);
         return false;
     }
     
-    printf("Loaded ROM: %s (%ld bytes)\n", rom_path, file_size);
+    // Store ROM data and path for cleanup
+    frontend->rom_data = rom_data;
+    frontend->rom_data_size = frontend->need_fullpath ? 0 : game_info.size;
+    frontend->rom_path = abs_path;
+    
+    printf("Loaded ROM: %s (%zu bytes)\n", abs_path, frontend->need_fullpath ? 0 : game_info.size);
     
     // Update AV info after game is loaded (resolution may change)
     libretro_frontend_update_av_info(frontend);
-    
-    // Note: We don't free rom_data here because the core might need it
-    // The core should handle cleanup when retro_unload_game is called
     
     return true;
 }
@@ -611,6 +647,16 @@ void libretro_frontend_deinit(libretro_frontend_t* frontend) {
         frontend->core->retro_unload_game();
     }
     
+    // Free ROM data and path (after retro_unload_game)
+    if (frontend->rom_data) {
+        free(frontend->rom_data);
+        frontend->rom_data = NULL;
+    }
+    if (frontend->rom_path) {
+        free(frontend->rom_path);
+        frontend->rom_path = NULL;
+    }
+    
     // Deinitialize core
     if (frontend->core && frontend->core->retro_deinit) {
         frontend->core->retro_deinit();
@@ -655,6 +701,11 @@ size_t libretro_frontend_get_audio_samples(libretro_frontend_t* frontend, float*
     
     size_t frames_to_read = (max_frames < frontend->audio_ring_available) ? max_frames : frontend->audio_ring_available;
     
+    static int read_count = 0;
+    if (read_count++ < 5 && frames_to_read > 0) {
+        printf("Reading audio: %zu frames available, reading %zu\n", frontend->audio_ring_available, frames_to_read);
+    }
+    
     if (frames_to_read == 0) return 0;
     
     // Read from ring buffer - optimize for contiguous reads
@@ -691,6 +742,8 @@ size_t libretro_frontend_get_audio_samples(libretro_frontend_t* frontend, float*
 static bool retro_environment_callback(unsigned cmd, void* data) {
     if (!g_frontend) return false;
     
+    // Debug output removed - callbacks are working
+    
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
             unsigned* format = (unsigned*)data;
@@ -701,6 +754,16 @@ static bool retro_environment_callback(unsigned cmd, void* data) {
                     case RETRO_PIXEL_FORMAT_0RGB1555: format_name = "0RGB1555"; break;
                     case RETRO_PIXEL_FORMAT_XRGB8888: format_name = "XRGB8888"; break;
                     case RETRO_PIXEL_FORMAT_RGB565: format_name = "RGB565"; break;
+                    default:
+                        // Unknown format - default to XRGB8888
+                        if (*format == 12) {
+                            printf("Warning: Core requested unsupported pixel format: 12\n");
+                            printf("Supported formats: 0 (0RGB1555), 1 (XRGB8888), 2 (RGB565)\n");
+                            printf("Using XRGB8888 instead\n");
+                            g_frontend->pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
+                            format_name = "XRGB8888 (fallback)";
+                        }
+                        break;
                 }
                 printf("Core requested pixel format: %u (%s)\n", *format, format_name);
             }
@@ -721,7 +784,40 @@ static bool retro_environment_callback(unsigned cmd, void* data) {
             *support = true;
             return true;
         }
+        case RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY: {
+            const char** dir = (const char**)data;
+            *dir = "./";
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: {
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_VARIABLES: {
+            return true;
+        }
+        case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
+            unsigned* enable = (unsigned*)data;
+            *enable = 3; // Enable both audio and video
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: {
+            // Some cores use this to set up custom audio callbacks
+            // We don't support custom audio callbacks, but return true to indicate we handle it
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_FASTFORWARDING: {
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: {
+            return true;
+        }
         default:
+            // For unknown/extended commands, return false (not supported)
+            // Some cores may check return values, but returning true for unknown commands
+            // can cause issues. Better to return false and let the core handle it.
             return false;
     }
 }
@@ -903,6 +999,12 @@ static size_t retro_audio_sample_batch_callback(const int16_t* data, size_t fram
     // Convert int16_t samples to float and add to ring buffer
     size_t available_space = g_frontend->audio_ring_buffer_size - g_frontend->audio_ring_available;
     size_t frames_to_write = (frames < available_space) ? frames : available_space;
+    
+    static int audio_callback_count = 0;
+    if (audio_callback_count++ < 5) {
+        printf("Audio callback[%d]: received %zu frames, writing %zu, available space: %zu\n", 
+               audio_callback_count, frames, frames_to_write, available_space);
+    }
     
     if (frames_to_write == 0) {
         // Buffer full - this is bad, means we're not reading fast enough

@@ -16,3 +16,6 @@ obj/
 libretro_raylib
 *.dylib
 *.sav
+cores/
+*.smc
+*.sfc

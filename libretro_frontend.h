@@ -72,6 +72,7 @@ typedef struct {
     float* audio_buffer;
     size_t audio_buffer_size;
     unsigned audio_sample_rate;
+    double fps;  // Core's reported FPS
     
     // Audio ring buffer for streaming
     float* audio_ring_buffer;
@@ -91,6 +92,14 @@ typedef struct {
     bool has_set_audio_sample_batch;
     bool has_set_input_poll;
     bool has_set_input_state;
+    
+    // System info (from retro_get_system_info)
+    bool need_fullpath;
+    
+    // ROM data (must remain valid until retro_unload_game is called)
+    void* rom_data;
+    size_t rom_data_size;
+    char* rom_path;  // Path string (must remain valid until retro_unload_game is called)
 } libretro_frontend_t;
 
 //=============================================================================
