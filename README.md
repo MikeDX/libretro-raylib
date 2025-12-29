@@ -104,7 +104,16 @@ The frontend implements the libretro API callbacks for:
 
 ## Notes
 
-- The frontend supports pixel formats: XRGB8888, RGB565, and 0RGB1555
+- The frontend supports pixel formats:
+  - **XRGB8888** (format 1): 32-bit format, 8 bits per channel
+  - **RGB565** (format 2): 16-bit format, 5-6-5 bits (R-G-B), used by mGBA
+  - **0RGB1555** (format 0): 16-bit format, 5-5-5 bits (R-G-B), used by bsnes
+  - **RGB555** (format 12): 16-bit format, 5-5-5 bits (R-G-B), used by snes9x
 - Audio is converted from int16_t samples to float for raylib
 - Video frames are converted to RGBA8888 format for rendering
 - Audio uses a ring buffer to handle timing variations between core and playback
+- Single-sample audio callbacks are supported for cores like xrick
+
+## Known Issues
+
+- **bsnes with Super Mario Kart**: bsnes crashes when loading Super Mario Kart (`smk.sfc`). This appears to be a core-specific issue. Super Mario Kart works correctly with snes9x. Other SNES games (e.g., Super Mario World) work fine with bsnes.
