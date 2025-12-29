@@ -158,6 +158,11 @@ struct retro_game_info {
     const char* meta;
 };
 
+struct retro_variable {
+    const char* key;
+    const char* value;
+};
+
 // Libretro core structure
 struct retro_core_t {
     unsigned api_version;
@@ -305,9 +310,9 @@ bool libretro_frontend_init(libretro_frontend_t* frontend) {
     frontend->audio_buffer_size = 4096;
     frontend->audio_buffer = (float*)malloc(frontend->audio_buffer_size * sizeof(float) * 2);
     
-    // Initialize audio ring buffer (enough for ~0.5 seconds to prevent underruns)
-    // Larger buffer helps prevent scratchiness from buffer underruns
-    frontend->audio_ring_buffer_size = frontend->audio_sample_rate / 2; // ~22050 frames at 44.1kHz = 0.5 seconds
+    // Initialize audio ring buffer (enough for ~0.25 seconds to balance latency and underruns)
+    // Smaller buffer reduces latency while still preventing scratchiness
+    frontend->audio_ring_buffer_size = frontend->audio_sample_rate / 4; // ~5512 frames at 22kHz = 0.25 seconds
     frontend->audio_ring_buffer = (float*)calloc(frontend->audio_ring_buffer_size * 2, sizeof(float)); // Stereo
     frontend->audio_ring_read_pos = 0;
     frontend->audio_ring_write_pos = 0;
@@ -369,13 +374,15 @@ bool libretro_frontend_load_core(libretro_frontend_t* frontend, const char* core
         return false;
     }
     
-    // Set callbacks
+    // Set callbacks BEFORE loading other functions
+    // Some cores (like xrick) may check callback pointers during initialization
     set_env(retro_environment_callback);
     set_video(retro_video_refresh_callback);
     set_audio(retro_audio_sample_callback);
     set_audio_batch(retro_audio_sample_batch_callback);
     set_input_poll(retro_input_poll_callback);
     set_input_state(retro_input_state_callback);
+    
     
     frontend->has_set_environment = true;
     frontend->has_set_video_refresh = true;
@@ -466,13 +473,16 @@ void libretro_frontend_update_av_info(libretro_frontend_t* frontend) {
         frontend->aspect_ratio = av_info.geometry.aspect_ratio;
         
         unsigned new_sample_rate = (unsigned)av_info.timing.sample_rate;
+        fprintf(stderr, "Video: %ux%u (aspect: %.2f, fps: %.2f)\n", 
+                frontend->width, frontend->height, frontend->aspect_ratio, frontend->fps);
+        fprintf(stderr, "Audio: %u Hz\n", new_sample_rate);
         if (new_sample_rate != frontend->audio_sample_rate) {
             // Reallocate ring buffer if sample rate changed
             if (frontend->audio_ring_buffer) {
                 free(frontend->audio_ring_buffer);
             }
             frontend->audio_sample_rate = new_sample_rate;
-            frontend->audio_ring_buffer_size = frontend->audio_sample_rate / 2; // ~0.5 seconds
+            frontend->audio_ring_buffer_size = frontend->audio_sample_rate / 4; // ~0.25 seconds
             frontend->audio_ring_buffer = (float*)calloc(frontend->audio_ring_buffer_size * 2, sizeof(float));
             frontend->audio_ring_read_pos = 0;
             frontend->audio_ring_write_pos = 0;
@@ -702,10 +712,6 @@ size_t libretro_frontend_get_audio_samples(libretro_frontend_t* frontend, float*
     
     size_t frames_to_read = (max_frames < frontend->audio_ring_available) ? max_frames : frontend->audio_ring_available;
     
-    static int read_count = 0;
-    if (read_count++ < 5 && frames_to_read > 0) {
-    }
-    
     if (frames_to_read == 0) return 0;
     
     // Read from ring buffer - optimize for contiguous reads
@@ -781,21 +787,25 @@ static bool retro_environment_callback(unsigned cmd, void* data) {
             return true;
         }
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: {
+            if (!data) return false;
             const char** dir = (const char**)data;
             *dir = "./";
             return true;
         }
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: {
+            if (!data) return false;
             const char** dir = (const char**)data;
             *dir = "./";
             return true;
         }
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: {
+            if (!data) return false;
             bool* support = (bool*)data;
             *support = true;
             return true;
         }
         case RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY: {
+            if (!data) return false;
             const char** dir = (const char**)data;
             *dir = "./";
             return true;
@@ -810,8 +820,14 @@ static bool retro_environment_callback(unsigned cmd, void* data) {
             return true;
         }
         case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
+            if (!data) return false;
             unsigned* enable = (unsigned*)data;
-            *enable = 3; // Enable both audio and video
+            *enable = 3; // Enable both audio and video (bit 0=video, bit 1=audio)
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_AUDIO_VIDEO_ENABLE: {
+            // Core wants to enable/disable audio/video
+            // Acknowledge the request (we always enable both)
             return true;
         }
         case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: {
@@ -1003,25 +1019,39 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
 
 // Single-sample audio accumulator for cores that use retro_audio_sample_callback
 #define SINGLE_SAMPLE_BUFFER_SIZE 512
-#define SINGLE_SAMPLE_FLUSH_THRESHOLD 64  // Flush more frequently to reduce latency
+#define SINGLE_SAMPLE_FLUSH_THRESHOLD 1  // Flush immediately - xrick may need immediate processing
 static int16_t single_sample_buffer[SINGLE_SAMPLE_BUFFER_SIZE * 2]; // Stereo
 static size_t single_sample_count = 0;
 
 static void retro_audio_sample_callback(int16_t left, int16_t right) {
     if (!g_frontend) return;
     
-    // Debug output disabled
-    
     // Accumulate samples in buffer
     if (single_sample_count < SINGLE_SAMPLE_BUFFER_SIZE) {
         single_sample_buffer[single_sample_count * 2] = left;
         single_sample_buffer[single_sample_count * 2 + 1] = right;
         single_sample_count++;
+    } else {
+        // Buffer is full - flush it before adding more samples
+        retro_audio_sample_batch_callback(single_sample_buffer, single_sample_count);
+        single_sample_count = 0;
+        // Add the new sample
+        single_sample_buffer[0] = left;
+        single_sample_buffer[1] = right;
+        single_sample_count = 1;
     }
     
-    // Flush when buffer reaches threshold or is full to reduce latency
+    // Flush when buffer reaches threshold to reduce latency
+    // Use a lower threshold for better responsiveness
     if (single_sample_count >= SINGLE_SAMPLE_FLUSH_THRESHOLD) {
-        retro_audio_sample_batch_callback(single_sample_buffer, single_sample_count);
+        size_t processed = retro_audio_sample_batch_callback(single_sample_buffer, single_sample_count);
+        if (processed != single_sample_count) {
+            static int drop_count = 0;
+            if (drop_count++ < 3) {
+                fprintf(stderr, "WARNING: Only processed %zu/%zu samples (buffer full?)\n", 
+                        processed, single_sample_count);
+            }
+        }
         single_sample_count = 0;
     }
 }
@@ -1044,6 +1074,17 @@ static void flush_single_sample_buffer(void) {
  */
 static size_t retro_audio_sample_batch_callback(const int16_t* data, size_t frames) {
     if (!g_frontend || !data || frames == 0) return 0;
+    
+    // Safety check: ensure ring buffer is initialized
+    if (!g_frontend->audio_ring_buffer || g_frontend->audio_ring_buffer_size == 0) {
+        static int error_count = 0;
+        if (error_count++ < 3) {
+            fprintf(stderr, "ERROR: Audio ring buffer not initialized!\n");
+        }
+        return 0;
+    }
+    
+    // Audio batch callback - samples are being processed correctly
     
     // IMPORTANT: According to libretro docs, we must return the number of frames we processed
     // If buffer is full, we should still try to write what we can, but return the actual count

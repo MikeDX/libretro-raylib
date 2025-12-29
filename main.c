@@ -169,7 +169,9 @@ int main(int argc, char* argv[]) {
         if (IsAudioStreamReady(audio_stream)) {
             PlayAudioStream(audio_stream);
             audio_stream_created = true;
+            fprintf(stderr, "Audio initialized: %u Hz, stereo\n", sample_rate);
         } else {
+            fprintf(stderr, "Failed to create audio stream at %u Hz\n", sample_rate);
             // If original rate failed and it was unusual, try 48000 Hz fallback
             if (original_rate == 65536 || original_rate == 32768) {
                 audio_stream = LoadAudioStream(48000, 32, 2);

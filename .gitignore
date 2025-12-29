@@ -19,3 +19,4 @@ libretro_raylib
 cores/
 *.smc
 *.sfc
+*.srm
