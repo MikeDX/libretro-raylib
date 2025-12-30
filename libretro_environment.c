@@ -13,6 +13,7 @@
 #include "libretro_environment.h"
 #include "libretro_frontend.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <limits.h>
 
@@ -46,49 +47,33 @@ bool retro_environment_callback(unsigned cmd, void* data) {
     }
     
     // Debug output for important callbacks
-    const char* cmd_name = "UNKNOWN";
-    switch (cmd) {
-        case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: cmd_name = "SET_PIXEL_FORMAT"; break;
-        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: cmd_name = "GET_SYSTEM_DIRECTORY"; break;
-        case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: cmd_name = "SET_SUPPORT_NO_GAME"; break;
-        case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: cmd_name = "GET_LOG_INTERFACE"; break;
-        default: break;
-    }
-    if (cmd == RETRO_ENVIRONMENT_SET_PIXEL_FORMAT || cmd == RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY) {
-        fprintf(stderr, "Environment callback: cmd=%u (%s)\n", cmd, cmd_name);
-    }
+    // Logging removed for cleaner output - format/size info logged in video callback
     
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
             unsigned* format = (unsigned*)data;
             if (!g_frontend) return false;
-            if (g_frontend) {
-                switch (*format) {
-                    case RETRO_PIXEL_FORMAT_0RGB1555: 
-                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
-                        g_frontend->pixel_format_raw = *format;
-                        fprintf(stderr, "Pixel format: 0RGB1555 (format 0) - R=bits 10-14, G=bits 5-9, B=bits 0-4\n");
-                        break;
-                    case RETRO_PIXEL_FORMAT_XRGB8888: 
-                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
-                        g_frontend->pixel_format_raw = *format;
-                        fprintf(stderr, "Pixel format: XRGB8888 (format 1) - 32-bit\n");
-                        break;
-                    case RETRO_PIXEL_FORMAT_RGB565: 
-                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
-                        g_frontend->pixel_format_raw = *format;
-                        fprintf(stderr, "Pixel format: RGB565 (format 2) - R=bits 11-15, G=bits 5-10, B=bits 0-4\n");
-                        break;
-                    case RETRO_PIXEL_FORMAT_RGB555:
-                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
-                        g_frontend->pixel_format_raw = 12;
-                        fprintf(stderr, "Pixel format: RGB565 (format 12 from snes9x) - R=bits 11-15, G=bits 5-10, B=bits 0-4\n");
-                        break;
-                    default:
-                        g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
-                        g_frontend->pixel_format_raw = *format;
-                        break;
-                }
+            switch (*format) {
+                case RETRO_PIXEL_FORMAT_0RGB1555: 
+                    g_frontend->pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
+                    g_frontend->pixel_format_raw = *format;
+                    break;
+                case RETRO_PIXEL_FORMAT_XRGB8888: 
+                    g_frontend->pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
+                    g_frontend->pixel_format_raw = *format;
+                    break;
+                case RETRO_PIXEL_FORMAT_RGB565: 
+                    g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+                    g_frontend->pixel_format_raw = *format;
+                    break;
+                case 12: // Format 12: snes9x uses this but reports it as RGB565
+                    g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+                    g_frontend->pixel_format_raw = 12;
+                    break;
+                default:
+                    g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+                    g_frontend->pixel_format_raw = *format;
+                    break;
             }
             return true;
         }
@@ -132,19 +117,16 @@ bool retro_environment_callback(unsigned cmd, void* data) {
             *enable = 3; // Enable both audio and video
             return true;
         }
-        case RETRO_ENVIRONMENT_SET_AUDIO_VIDEO_ENABLE: {
-            return true;
-        }
         case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: {
             return true;
         }
-        case RETRO_ENVIRONMENT_SET_FASTFORWARDING: {
+        case RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE: {
             return true;
         }
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: {
             return true;
         }
-        case 32: { // RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
+        case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: {
             if (!data) return false;
             const struct retro_system_av_info* av_info = (const struct retro_system_av_info*)data;
             if (g_frontend && av_info) {
@@ -153,24 +135,33 @@ bool retro_environment_callback(unsigned cmd, void* data) {
                 g_frontend->aspect_ratio = av_info->geometry.aspect_ratio;
                 g_frontend->fps = av_info->timing.fps;
                 unsigned new_sample_rate = (unsigned)av_info->timing.sample_rate;
-                if (new_sample_rate > 0 && new_sample_rate != g_frontend->audio_sample_rate) {
+                if (new_sample_rate > 0) {
                     g_frontend->audio_sample_rate = new_sample_rate;
+                    // Reallocate audio ring buffer if sample rate changed
+                    if (g_frontend->audio_ring_buffer) {
+                        free(g_frontend->audio_ring_buffer);
+                    }
+                    g_frontend->audio_ring_buffer_size = new_sample_rate / 4; // ~0.25 seconds
+                    if (g_frontend->audio_ring_buffer_size == 0) {
+                        g_frontend->audio_ring_buffer_size = 11025;
+                    }
+                    g_frontend->audio_ring_buffer = (float*)calloc(g_frontend->audio_ring_buffer_size * 2, sizeof(float));
+                    g_frontend->audio_ring_read_pos = 0;
+                    g_frontend->audio_ring_write_pos = 0;
+                    g_frontend->audio_ring_available = 0;
                 }
-                fprintf(stderr, "SET_SYSTEM_AV_INFO: %ux%u (aspect: %.2f, fps: %.2f, sample rate: %.2f Hz)\n",
-                        g_frontend->width, g_frontend->height, g_frontend->aspect_ratio, 
-                        g_frontend->fps, (double)g_frontend->audio_sample_rate);
+                // Logged in video callback instead
             }
             return true;
         }
-        case 37: { // RETRO_ENVIRONMENT_SET_GEOMETRY
+        case RETRO_ENVIRONMENT_SET_GEOMETRY: {
             if (!data) return false;
             const struct retro_game_geometry* geom = (const struct retro_game_geometry*)data;
             if (g_frontend && geom) {
                 g_frontend->width = geom->base_width;
                 g_frontend->height = geom->base_height;
                 g_frontend->aspect_ratio = geom->aspect_ratio;
-                fprintf(stderr, "SET_GEOMETRY: %ux%u (aspect: %.2f)\n",
-                        g_frontend->width, g_frontend->height, g_frontend->aspect_ratio);
+                // Logged in video callback instead
             }
             return true;
         }

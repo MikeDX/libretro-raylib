@@ -12,7 +12,7 @@
 
 #include "libretro_input.h"
 #include "libretro_frontend.h"
-#include "libretro_api.h"
+#include "libretro.h"
 
 // Global frontend instance for callbacks
 static libretro_frontend_t* g_frontend = NULL;

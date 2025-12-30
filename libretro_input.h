@@ -13,7 +13,7 @@
 #ifndef LIBRETRO_INPUT_H
 #define LIBRETRO_INPUT_H
 
-#include "libretro_api.h"
+#include "libretro.h"
 #include "libretro_frontend.h"
 
 /**

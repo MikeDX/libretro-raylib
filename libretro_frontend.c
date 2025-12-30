@@ -17,12 +17,13 @@
  */
 
 #include "libretro_frontend.h"
-#include "libretro_api.h"
+#include "libretro.h"
 #include "libretro_environment.h"
 #include "libretro_video.h"
 #include "libretro_audio.h"
 #include "libretro_input.h"
 #include "libretro_core.h"
+#include "libretro_environment.h"  // For retro_environment_callback
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -102,6 +103,20 @@ void libretro_frontend_run_frame(libretro_frontend_t* frontend) {
         frontend->core->retro_run();
     }
     
+    // For VICE and similar cores: Call SET_SYSTEM_AV_INFO after first frame
+    // VICE's update_geometry only calls SET_SYSTEM_AV_INFO when runstate > RUNSTATE_FIRST_START
+    // So we need to call it after the first retro_run when runstate changes to RUNNING
+    if (!frontend->av_info_sent_after_first_frame && frontend->core->retro_get_system_av_info) {
+        struct retro_system_av_info av_info;
+        frontend->core->retro_get_system_av_info(&av_info);
+        // Removed debug logging - format/size info logged in video callback
+        retro_environment_callback(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &av_info);
+        frontend->av_info_sent_after_first_frame = true;
+        
+        // Update our AV info after sending it to the core
+        libretro_frontend_update_av_info(frontend);
+    }
+    
     // Flush any accumulated single-sample audio after each frame
     libretro_audio_flush_buffer();
 }
@@ -138,31 +153,36 @@ void libretro_frontend_set_keyboard_key(libretro_frontend_t* frontend, unsigned 
 size_t libretro_frontend_get_audio_samples(libretro_frontend_t* frontend, float* buffer, size_t max_frames) {
     if (!frontend || !buffer || max_frames == 0) return 0;
     
+    if (!frontend->audio_ring_buffer || frontend->audio_ring_buffer_size == 0) {
+        return 0;
+    }
+    
     size_t frames_to_read = (max_frames < frontend->audio_ring_available) ? max_frames : frontend->audio_ring_available;
     
-    if (frames_to_read == 0) return 0;
+    if (frames_to_read == 0) {
+        // Underrun - fill with silence
+        memset(buffer, 0, max_frames * 2 * sizeof(float));
+        return max_frames;
+    }
     
     // Read from ring buffer
-    if (frames_to_read == frontend->audio_ring_available &&
-        (frontend->audio_ring_read_pos + frames_to_read) <= frontend->audio_ring_buffer_size) {
-        // Fast path: contiguous read, no wrap-around
-        float* src = frontend->audio_ring_buffer + frontend->audio_ring_read_pos * 2;
-        memcpy(buffer, src, frames_to_read * 2 * sizeof(float));
-    } else {
-        // Slow path: handle wrap-around
-        for (size_t i = 0; i < frames_to_read; i++) {
-            size_t read_idx = (frontend->audio_ring_read_pos + i) % frontend->audio_ring_buffer_size;
-            float* src = frontend->audio_ring_buffer + read_idx * 2;
-            
-            buffer[i * 2] = src[0];
-            buffer[i * 2 + 1] = src[1];
-        }
+    for (size_t i = 0; i < frames_to_read; i++) {
+        size_t read_idx = (frontend->audio_ring_read_pos + i) % frontend->audio_ring_buffer_size;
+        float* src = frontend->audio_ring_buffer + read_idx * 2;
+        
+        buffer[i * 2] = src[0];
+        buffer[i * 2 + 1] = src[1];
+    }
+    
+    // Fill remaining with silence if we read less than requested
+    if (frames_to_read < max_frames) {
+        memset(buffer + frames_to_read * 2, 0, (max_frames - frames_to_read) * 2 * sizeof(float));
     }
     
     frontend->audio_ring_read_pos = (frontend->audio_ring_read_pos + frames_to_read) % frontend->audio_ring_buffer_size;
     frontend->audio_ring_available -= frames_to_read;
     
-    return frames_to_read;
+    return max_frames; // Always return requested frames (filled with silence if needed)
 }
 
 void libretro_frontend_deinit(libretro_frontend_t* frontend) {
@@ -172,9 +192,11 @@ void libretro_frontend_deinit(libretro_frontend_t* frontend) {
     libretro_core_unload(frontend);
     
     // Free allocated memory
-    if (frontend->framebuffer) {
+    // Safety: Only free if framebuffer_size > 0 (indicates it was allocated)
+    if (frontend->framebuffer && frontend->framebuffer_size > 0) {
         free(frontend->framebuffer);
         frontend->framebuffer = NULL;
+        frontend->framebuffer_size = 0;
     }
     
     if (frontend->audio_buffer) {

@@ -17,7 +17,8 @@
 #ifndef LIBRETRO_FRONTEND_H
 #define LIBRETRO_FRONTEND_H
 
-#include "libretro_api.h"
+#include "libretro.h"
+#include "libretro_core_types.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -34,13 +35,17 @@ typedef struct {
     struct retro_core_t* core;
     
     // Video
-    unsigned width;
-    unsigned height;
+    unsigned width;          // Display width (from AV info base_width)
+    unsigned height;         // Display height (from AV info base_height)
     float aspect_ratio;
     void* framebuffer;
     size_t framebuffer_size;
     unsigned pixel_format; // RETRO_PIXEL_FORMAT_*
     unsigned pixel_format_raw; // Original format value (for format 12 detection)
+    
+    // Frame cache dimensions (from video callback)
+    unsigned frame_width;   // Actual frame buffer width from callback
+    unsigned frame_height;  // Actual frame buffer height from callback
     
     // Audio
     float* audio_buffer;
@@ -57,7 +62,7 @@ typedef struct {
     
     // Input
     bool input_state[16][16]; // [port][button]
-    bool keyboard_state[RETROK_LAST]; // Keyboard key states (RETROK_LAST defined in libretro_api.h)
+    bool keyboard_state[RETROK_LAST]; // Keyboard key states (RETROK_LAST defined in libretro.h)
     
     // Core state
     bool initialized;
@@ -67,6 +72,7 @@ typedef struct {
     bool has_set_audio_sample_batch;
     bool has_set_input_poll;
     bool has_set_input_state;
+    bool av_info_sent_after_first_frame; // Track if SET_SYSTEM_AV_INFO was sent after first frame
     
     // System info (from retro_get_system_info)
     bool need_fullpath;

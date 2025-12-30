@@ -87,31 +87,26 @@ size_t retro_audio_sample_batch_callback(const int16_t* data, size_t frames) {
     }
     
     // Convert int16_t samples to float and add to ring buffer
+    // Proper ring buffer handling: drop samples if buffer is full (prevent overflow)
     size_t available_space = g_frontend->audio_ring_buffer_size - g_frontend->audio_ring_available;
     size_t frames_to_write = (frames < available_space) ? frames : available_space;
     
     if (frames_to_write == 0) {
+        // Buffer full - drop samples to prevent overflow
+        static int drop_warn_count = 0;
+        if (drop_warn_count++ < 3) {
+            fprintf(stderr, "Audio buffer full, dropping %zu frames\n", frames);
+        }
         return 0;
     }
     
     // Write to ring buffer
-    if (frames_to_write == frames && 
-        (g_frontend->audio_ring_write_pos + frames_to_write) <= g_frontend->audio_ring_buffer_size) {
-        // Fast path: contiguous write, no wrap-around
-        float* dst = g_frontend->audio_ring_buffer + g_frontend->audio_ring_write_pos * 2;
-        for (size_t i = 0; i < frames_to_write; i++) {
-            dst[i * 2] = (float)data[i * 2] / 32768.0f;
-            dst[i * 2 + 1] = (float)data[i * 2 + 1] / 32768.0f;
-        }
-    } else {
-        // Slow path: handle wrap-around
-        for (size_t i = 0; i < frames_to_write; i++) {
-            size_t write_idx = (g_frontend->audio_ring_write_pos + i) % g_frontend->audio_ring_buffer_size;
-            float* buffer = g_frontend->audio_ring_buffer + write_idx * 2;
-            
-            buffer[0] = (float)data[i * 2] / 32768.0f;
-            buffer[1] = (float)data[i * 2 + 1] / 32768.0f;
-        }
+    for (size_t i = 0; i < frames_to_write; i++) {
+        size_t write_idx = (g_frontend->audio_ring_write_pos + i) % g_frontend->audio_ring_buffer_size;
+        float* buffer = g_frontend->audio_ring_buffer + write_idx * 2;
+        
+        buffer[0] = (float)data[i * 2] / 32768.0f;
+        buffer[1] = (float)data[i * 2 + 1] / 32768.0f;
     }
     
     g_frontend->audio_ring_write_pos = (g_frontend->audio_ring_write_pos + frames_to_write) % g_frontend->audio_ring_buffer_size;

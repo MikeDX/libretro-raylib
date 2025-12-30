@@ -13,7 +13,7 @@
 #ifndef LIBRETRO_ENVIRONMENT_H
 #define LIBRETRO_ENVIRONMENT_H
 
-#include "libretro_api.h"
+#include "libretro.h"
 #include "libretro_frontend.h"
 
 /**

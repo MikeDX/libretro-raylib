@@ -13,7 +13,8 @@
 #ifndef LIBRETRO_CORE_H
 #define LIBRETRO_CORE_H
 
-#include "libretro_api.h"
+#include "libretro.h"
+#include "libretro_core_types.h"
 #include "libretro_frontend.h"
 #include <stdbool.h>
 

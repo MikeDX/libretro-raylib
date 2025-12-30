@@ -13,7 +13,7 @@
 #ifndef LIBRETRO_VIDEO_H
 #define LIBRETRO_VIDEO_H
 
-#include "libretro_api.h"
+#include "libretro.h"
 #include "libretro_frontend.h"
 
 /**

@@ -27,7 +27,6 @@
  */
 static void setup_callbacks_after_load(libretro_frontend_t* frontend) {
     if (!frontend->has_set_video_refresh) {
-        fprintf(stderr, "Setting up video/audio/input callbacks after game load (matching RetroArch)...\n");
         typedef void (*retro_set_video_refresh_t)(retro_video_refresh_t);
         typedef void (*retro_set_audio_sample_t)(retro_audio_sample_t);
         typedef void (*retro_set_audio_sample_batch_t)(retro_audio_sample_batch_t);
@@ -198,19 +197,8 @@ void libretro_core_update_av_info(libretro_frontend_t* frontend) {
         
         frontend->fps = av_info.timing.fps;
         
-        size_t new_size = frontend->width * frontend->height * 4;
-        if (new_size != frontend->framebuffer_size || !frontend->framebuffer) {
-            if (frontend->framebuffer) {
-                free(frontend->framebuffer);
-                frontend->framebuffer = NULL;
-            }
-            frontend->framebuffer_size = new_size;
-            frontend->framebuffer = calloc(1, frontend->framebuffer_size);
-            if (!frontend->framebuffer) {
-                fprintf(stderr, "Failed to allocate framebuffer\n");
-                frontend->framebuffer_size = 0;
-            }
-        }
+        // Don't allocate framebuffer here - let video callback handle it
+        // Framebuffer allocation should happen in video callback based on actual frame dimensions
     }
 }
 
@@ -310,8 +298,24 @@ bool libretro_core_load_rom(libretro_frontend_t* frontend, const char* rom_path)
     frontend->rom_data_size = frontend->need_fullpath ? 0 : game_info.size;
     frontend->rom_path = abs_path;
     
+    // Match RetroArch's exact sequence:
+    // 1. Set callbacks AFTER loading game (matching RetroArch line 4661)
     setup_callbacks_after_load(frontend);
+    
+    // 2. Get AV info (matching RetroArch line 4663)
+    // RetroArch calls retro_get_system_av_info right after setting callbacks
+    // This is critical - VICE may need this to happen before the first retro_run
     libretro_core_update_av_info(frontend);
+    
+    // 3. Call SET_SYSTEM_AV_INFO to notify VICE (matching what VICE expects)
+    // VICE's update_geometry only calls SET_SYSTEM_AV_INFO when runstate > RUNSTATE_FIRST_START
+    // But VICE needs SET_SYSTEM_AV_INFO to initialize video properly, so we call it here
+    // This matches RetroArch's behavior where the core calls SET_SYSTEM_AV_INFO via environment callback
+    if (frontend->core && frontend->core->retro_get_system_av_info) {
+        struct retro_system_av_info av_info;
+        frontend->core->retro_get_system_av_info(&av_info);
+        retro_environment_callback(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &av_info);
+    }
     
     return true;
 }

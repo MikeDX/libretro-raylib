@@ -280,23 +280,32 @@ int main(int argc, char* argv[]) {
     }
     
     // Create texture for rendering
-    // First create an empty texture, we'll update it each frame
-    Image img = {
-        .data = frontend.framebuffer,
-        .width = (int)width,
-        .height = (int)height,
-        .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
-        .mipmaps = 1
-    };
+    // Texture will be recreated if dimensions change
+    Texture2D texture = {0};
+    unsigned current_texture_width = 0;
+    unsigned current_texture_height = 0;
     
-    Texture2D texture = LoadTextureFromImage(img);
-    
-    // Ensure texture is properly initialized
-    if (texture.id == 0) {
-        fprintf(stderr, "Failed to create texture\n");
-        CloseWindow();
-        libretro_frontend_deinit(&frontend);
-        return 1;
+    // Initial texture creation
+    if (frontend.framebuffer && width > 0 && height > 0) {
+        Image img = {
+            .data = frontend.framebuffer,
+            .width = (int)width,
+            .height = (int)height,
+            .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+            .mipmaps = 1
+        };
+        
+        texture = LoadTextureFromImage(img);
+        current_texture_width = width;
+        current_texture_height = height;
+        
+        // Ensure texture is properly initialized
+        if (texture.id == 0) {
+            fprintf(stderr, "Failed to create texture\n");
+            CloseWindow();
+            libretro_frontend_deinit(&frontend);
+            return 1;
+        }
     }
     
     
@@ -335,8 +344,42 @@ int main(int argc, char* argv[]) {
         }
         
         
+        // Check if dimensions changed and recreate texture if needed
+        unsigned new_width, new_height;
+        libretro_frontend_get_video_size(&frontend, &new_width, &new_height);
+        
+        if (new_width != current_texture_width || new_height != current_texture_height) {
+            // Dimensions changed, recreate texture
+            if (texture.id != 0) {
+                UnloadTexture(texture);
+            }
+            
+            if (frontend.framebuffer && new_width > 0 && new_height > 0) {
+                Image img = {
+                    .data = frontend.framebuffer,
+                    .width = (int)new_width,
+                    .height = (int)new_height,
+                    .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+                    .mipmaps = 1
+                };
+                
+                texture = LoadTextureFromImage(img);
+                current_texture_width = new_width;
+                current_texture_height = new_height;
+                width = new_width;
+                height = new_height;
+                
+                // Recalculate window scaling
+                int window_width = width * 3;
+                int window_height = height * 3;
+                SetWindowSize(window_width, window_height);
+            }
+        }
+        
         // Update texture with new frame data
-        UpdateTexture(texture, frontend.framebuffer);
+        if (texture.id != 0 && frontend.framebuffer) {
+            UpdateTexture(texture, frontend.framebuffer);
+        }
         
         // Render
         BeginDrawing();

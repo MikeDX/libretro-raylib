@@ -12,8 +12,11 @@ This project is licensed under the MIT License.
 
 This project uses the following third-party libraries:
 
-- **libretro API**: The libretro API specification is used under the BSD 3-Clause License.
+- **libretro API**: The official `libretro.h` header file is included from RetroArch's libretro-common repository.
+  Copyright (C) 2010-2024 The RetroArch team.
+  The libretro API is available under the MIT License (as stated in the header file).
   See https://www.libretro.com/ for details.
+  **Note**: The `libretro.h` file in this repository is an unmodified copy and should not be edited.
 
 - **raylib**: Used under the zlib/libpng license.
   See https://github.com/raysan5/raylib for details.
@@ -63,6 +66,15 @@ This will create the `libretro_raylib` executable.
 # Load a core without a ROM (for cores that support no-game mode)
 ./libretro_raylib cores/mgba_libretro.dylib
 
+# Atari 2600 (Stella core)
+./libretro_raylib cores/stella_libretro.dylib pitfall.bin
+
+# SNES (bsnes core)
+./libretro_raylib cores/bsnes_libretro.dylib mario_kart.sfc
+
+# SNES (snes9x core)
+./libretro_raylib cores/snes9x_libretro.dylib super_mario_world.sfc
+
 # Or use a core from any location
 ./libretro_raylib /path/to/core.dylib /path/to/rom.gba
 ```
@@ -83,11 +95,12 @@ This will create the `libretro_raylib` executable.
 ## Features
 
 - Dynamic loading of libretro cores
-- Video rendering with pixel format conversion
-- Audio playback with ring buffer management
+- Video rendering with pixel format conversion and proper frame/display dimension handling
+- Audio playback with ring buffer management and underrun/overflow protection
 - Keyboard input mapping
 - Aspect ratio preservation
 - Modular architecture for maintainability and extensibility
+- Support for multiple pixel formats (XRGB8888, RGB565, 0RGB1555, RGB555)
 
 ## Architecture
 
@@ -95,10 +108,15 @@ The frontend is organized into modular components:
 
 ### Core Modules
 
-- **`libretro_api.h`** - Libretro API constants, structures, and type definitions
-  - All libretro constants and enums
-  - Core function pointer types
+- **`libretro.h`** - Official libretro API header (unmodified copy from RetroArch)
+  - All libretro constants, enums, structures, and type definitions
   - Callback type definitions
+  - This file is maintained by the RetroArch/libretro team and should not be modified
+
+- **`libretro_core_types.h`** - Custom core function pointer wrapper
+  - `retro_core_t` structure for holding dynamically loaded core function pointers
+  - Core symbol name definitions (`SYM_RETRO_*`)
+  - This is our own structure, not part of the official libretro API
 
 - **`libretro_frontend.h/c`** - Main public API
   - Coordinates all modules
@@ -166,6 +184,15 @@ The modular design provides:
 - Audio uses a ring buffer to handle timing variations between core and playback
 - Single-sample audio callbacks are supported for cores like xrick
 
+## Tested Cores
+
+The following cores have been tested and are working:
+
+- **mGBA** - Game Boy Advance emulation
+- **bsnes** - SNES emulation (including Super Mario Kart)
+- **snes9x** - SNES emulation (tested with Super Mario World and Super Mario Kart)
+- **Stella** - Atari 2600 emulation
+
 ## Known Issues
 
-- **bsnes with Super Mario Kart**: bsnes crashes when loading Super Mario Kart (`smk.sfc`). This appears to be a core-specific issue. Super Mario Kart works correctly with snes9x. Other SNES games (e.g., Super Mario World) work fine with bsnes.
+None at this time. If you encounter issues with specific cores or games, please report them.
