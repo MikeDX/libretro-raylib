@@ -87,20 +87,72 @@ This will create the `libretro_raylib` executable.
 - Audio playback with ring buffer management
 - Keyboard input mapping
 - Aspect ratio preservation
+- Modular architecture for maintainability and extensibility
 
 ## Architecture
 
-The frontend consists of:
+The frontend is organized into modular components:
 
-- `main.c` - Main entry point and raylib integration
-- `libretro_frontend.h` - Public API header
-- `libretro_frontend.c` - Libretro API implementation
+### Core Modules
 
-The frontend implements the libretro API callbacks for:
-- Environment queries
-- Video refresh
-- Audio sample batching
-- Input polling and state
+- **`libretro_api.h`** - Libretro API constants, structures, and type definitions
+  - All libretro constants and enums
+  - Core function pointer types
+  - Callback type definitions
+
+- **`libretro_frontend.h/c`** - Main public API
+  - Coordinates all modules
+  - Public API functions for core management
+  - Frontend state management
+
+### Callback Modules
+
+- **`libretro_environment.h/c`** - Environment callback implementation
+  - Handles core requests for system information
+  - Pixel format configuration
+  - Directory paths and system settings
+  - Log interface support
+
+- **`libretro_video.h/c`** - Video refresh callback
+  - Receives rendered frames from cores
+  - Pixel format conversion (RGB565, XRGB8888, 0RGB1555)
+  - Framebuffer management
+  - Auto-detection of pixel formats
+
+- **`libretro_audio.h/c`** - Audio callbacks
+  - Single-sample and batch audio callbacks
+  - Ring buffer management for audio streaming
+  - Audio format conversion (int16_t to float)
+  - Handles cores that use single-sample callbacks (e.g., xrick)
+
+- **`libretro_input.h/c`** - Input handling
+  - Input poll callback
+  - Input state queries (joypad and keyboard)
+  - Keyboard keycode mapping
+
+### Core Management
+
+- **`libretro_core.h/c`** - Core loading and management
+  - Dynamic library loading (dlopen)
+  - Core symbol resolution
+  - Core initialization
+  - ROM loading (supports both fullpath and memory-based loading)
+  - Audio/video info updates
+  - Core cleanup and resource management
+
+### Application
+
+- **`main.c`** - Main entry point and raylib integration
+  - Window management
+  - Input handling (keyboard to libretro mapping)
+  - Audio stream management
+  - Frame rendering loop
+
+The modular design provides:
+- **Separation of concerns**: Each module handles a specific aspect of the libretro API
+- **Maintainability**: Easier to locate and modify specific functionality
+- **Testability**: Modules can be tested independently
+- **Readability**: Smaller, focused files are easier to understand
 
 ## Notes
 

@@ -9,7 +9,7 @@ SRC_DIR = .
 OBJ_DIR = obj
 
 # Source files
-SOURCES = main.c libretro_frontend.c
+SOURCES = main.c libretro_frontend.c libretro_environment.c libretro_video.c libretro_audio.c libretro_input.c libretro_core.c
 OBJECTS = $(SOURCES:%.c=$(OBJ_DIR)/%.o)
 
 # Libraries

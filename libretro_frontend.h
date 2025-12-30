@@ -17,41 +17,10 @@
 #ifndef LIBRETRO_FRONTEND_H
 #define LIBRETRO_FRONTEND_H
 
+#include "libretro_api.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
-
-//=============================================================================
-// Libretro Device Constants
-//=============================================================================
-
-// Libretro keyboard keycodes (forward declaration - full enum in .c file)
-enum retro_key;
-#define RETROK_LAST 321
-
-// Libretro device IDs
-#define RETRO_DEVICE_ID_JOYPAD_B 0
-#define RETRO_DEVICE_ID_JOYPAD_Y 1
-#define RETRO_DEVICE_ID_JOYPAD_SELECT 2
-#define RETRO_DEVICE_ID_JOYPAD_START 3
-#define RETRO_DEVICE_ID_JOYPAD_UP 4
-#define RETRO_DEVICE_ID_JOYPAD_DOWN 5
-#define RETRO_DEVICE_ID_JOYPAD_LEFT 6
-#define RETRO_DEVICE_ID_JOYPAD_RIGHT 7
-#define RETRO_DEVICE_ID_JOYPAD_A 8
-#define RETRO_DEVICE_ID_JOYPAD_X 9
-#define RETRO_DEVICE_ID_JOYPAD_L 10
-#define RETRO_DEVICE_ID_JOYPAD_R 11
-#define RETRO_DEVICE_ID_JOYPAD_L2 12
-#define RETRO_DEVICE_ID_JOYPAD_R2 13
-#define RETRO_DEVICE_ID_JOYPAD_L3 14
-#define RETRO_DEVICE_ID_JOYPAD_R3 15
-
-//=============================================================================
-// Forward Declarations
-//=============================================================================
-
-struct retro_core_t;
 
 //=============================================================================
 // Frontend Structure
@@ -88,7 +57,7 @@ typedef struct {
     
     // Input
     bool input_state[16][16]; // [port][button]
-    bool keyboard_state[RETROK_LAST]; // Keyboard key states
+    bool keyboard_state[RETROK_LAST]; // Keyboard key states (RETROK_LAST defined in libretro_api.h)
     
     // Core state
     bool initialized;
@@ -180,7 +149,7 @@ void libretro_frontend_get_video_size(libretro_frontend_t* frontend, unsigned* w
  * Set input state for a joypad button
  * @param frontend Pointer to frontend structure
  * @param port Controller port (0-15)
- * @param button Button ID (RETRO_DEVICE_ID_JOYPAD_*)
+ * @param button Button ID (RETRO_DEVICE_ID_JOYPAD_* from libretro_api.h)
  * @param pressed true if pressed, false if released
  */
 void libretro_frontend_set_input(libretro_frontend_t* frontend, unsigned port, unsigned button, bool pressed);
@@ -188,7 +157,7 @@ void libretro_frontend_set_input(libretro_frontend_t* frontend, unsigned port, u
 /**
  * Set keyboard key state
  * @param frontend Pointer to frontend structure
- * @param keycode Libretro keycode (RETROK_*)
+ * @param keycode Libretro keycode (RETROK_* from libretro_api.h)
  * @param pressed true if pressed, false if released
  */
 void libretro_frontend_set_keyboard_key(libretro_frontend_t* frontend, unsigned keycode, bool pressed);
