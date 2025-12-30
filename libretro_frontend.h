@@ -25,6 +25,10 @@
 // Libretro Device Constants
 //=============================================================================
 
+// Libretro keyboard keycodes (forward declaration - full enum in .c file)
+enum retro_key;
+#define RETROK_LAST 321
+
 // Libretro device IDs
 #define RETRO_DEVICE_ID_JOYPAD_B 0
 #define RETRO_DEVICE_ID_JOYPAD_Y 1
@@ -84,6 +88,7 @@ typedef struct {
     
     // Input
     bool input_state[16][16]; // [port][button]
+    bool keyboard_state[RETROK_LAST]; // Keyboard key states
     
     // Core state
     bool initialized;
@@ -132,7 +137,7 @@ bool libretro_frontend_init_core(libretro_frontend_t* frontend);
 /**
  * Load a ROM file into the core
  * @param frontend Pointer to initialized frontend
- * @param rom_path Path to the ROM file
+ * @param rom_path Path to the ROM file (can be NULL for no-game mode)
  * @return true on success, false on failure
  */
 bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_path);
@@ -149,6 +154,12 @@ void libretro_frontend_update_av_info(libretro_frontend_t* frontend);
  * @param frontend Pointer to frontend structure
  */
 void libretro_frontend_run_frame(libretro_frontend_t* frontend);
+
+/**
+ * Reset the core
+ * @param frontend Pointer to frontend structure
+ */
+void libretro_frontend_reset(libretro_frontend_t* frontend);
 
 /**
  * Get the current video framebuffer
@@ -173,6 +184,14 @@ void libretro_frontend_get_video_size(libretro_frontend_t* frontend, unsigned* w
  * @param pressed true if pressed, false if released
  */
 void libretro_frontend_set_input(libretro_frontend_t* frontend, unsigned port, unsigned button, bool pressed);
+
+/**
+ * Set keyboard key state
+ * @param frontend Pointer to frontend structure
+ * @param keycode Libretro keycode (RETROK_*)
+ * @param pressed true if pressed, false if released
+ */
+void libretro_frontend_set_keyboard_key(libretro_frontend_t* frontend, unsigned keycode, bool pressed);
 
 /**
  * Get audio samples from the ring buffer for playback

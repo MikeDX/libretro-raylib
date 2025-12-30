@@ -23,6 +23,8 @@
 #include <string.h>
 #include <math.h>
 #include <sys/stat.h>
+#include <stdarg.h>
+#include <limits.h>
 
 //=============================================================================
 // Libretro API Constants
@@ -38,9 +40,9 @@
 #define RETRO_ENVIRONMENT_SHUTDOWN 5
 #define RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL 6
 #define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 7
-#define RETRO_ENVIRONMENT_SET_PIXEL_FORMAT 8
 #define RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS 9
-#define RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK 10
+#define RETRO_ENVIRONMENT_SET_PIXEL_FORMAT 10  // VICE uses 10, not 8
+#define RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK 12  // VICE header defines this as 12
 #define RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE 11
 #define RETRO_ENVIRONMENT_SET_HW_RENDER 12
 #define RETRO_ENVIRONMENT_GET_VARIABLE 13
@@ -92,6 +94,7 @@
 #define RETRO_ENVIRONMENT_SET_DESKTOP_MODE 60
 
 #define RETRO_PIXEL_FORMAT_0RGB1555 0
+#define RETRO_PIXEL_FORMAT_0RGB1555 0
 #define RETRO_PIXEL_FORMAT_XRGB8888 1
 #define RETRO_PIXEL_FORMAT_RGB565 2
 #define RETRO_PIXEL_FORMAT_RGB555 12  // RGB555 format used by snes9x (Red-Green-Blue, 5-5-5 bits, bit 15 unused)
@@ -120,6 +123,142 @@
 #define RETRO_DEVICE_ID_JOYPAD_R2 13
 #define RETRO_DEVICE_ID_JOYPAD_L3 14
 #define RETRO_DEVICE_ID_JOYPAD_R3 15
+
+// Libretro keyboard keycodes (from libretro.h)
+enum retro_key {
+    RETROK_UNKNOWN        = 0,
+    RETROK_BACKSPACE      = 8,
+    RETROK_TAB            = 9,
+    RETROK_CLEAR          = 12,
+    RETROK_RETURN         = 13,
+    RETROK_PAUSE          = 19,
+    RETROK_ESCAPE         = 27,
+    RETROK_SPACE          = 32,
+    RETROK_EXCLAIM        = 33,
+    RETROK_QUOTEDBL       = 34,
+    RETROK_HASH           = 35,
+    RETROK_DOLLAR         = 36,
+    RETROK_AMPERSAND      = 38,
+    RETROK_QUOTE          = 39,
+    RETROK_LEFTPAREN      = 40,
+    RETROK_RIGHTPAREN     = 41,
+    RETROK_ASTERISK       = 42,
+    RETROK_PLUS           = 43,
+    RETROK_COMMA          = 44,
+    RETROK_MINUS          = 45,
+    RETROK_PERIOD         = 46,
+    RETROK_SLASH          = 47,
+    RETROK_0              = 48,
+    RETROK_1              = 49,
+    RETROK_2              = 50,
+    RETROK_3              = 51,
+    RETROK_4              = 52,
+    RETROK_5              = 53,
+    RETROK_6              = 54,
+    RETROK_7              = 55,
+    RETROK_8              = 56,
+    RETROK_9              = 57,
+    RETROK_COLON          = 58,
+    RETROK_SEMICOLON      = 59,
+    RETROK_LESS           = 60,
+    RETROK_EQUALS         = 61,
+    RETROK_GREATER        = 62,
+    RETROK_QUESTION       = 63,
+    RETROK_AT             = 64,
+    RETROK_LEFTBRACKET    = 91,
+    RETROK_BACKSLASH      = 92,
+    RETROK_RIGHTBRACKET   = 93,
+    RETROK_CARET          = 94,
+    RETROK_UNDERSCORE     = 95,
+    RETROK_BACKQUOTE      = 96,
+    RETROK_a              = 97,
+    RETROK_b              = 98,
+    RETROK_c              = 99,
+    RETROK_d              = 100,
+    RETROK_e              = 101,
+    RETROK_f              = 102,
+    RETROK_g              = 103,
+    RETROK_h              = 104,
+    RETROK_i              = 105,
+    RETROK_j              = 106,
+    RETROK_k              = 107,
+    RETROK_l              = 108,
+    RETROK_m              = 109,
+    RETROK_n              = 110,
+    RETROK_o              = 111,
+    RETROK_p              = 112,
+    RETROK_q              = 113,
+    RETROK_r              = 114,
+    RETROK_s              = 115,
+    RETROK_t              = 116,
+    RETROK_u              = 117,
+    RETROK_v              = 118,
+    RETROK_w              = 119,
+    RETROK_x              = 120,
+    RETROK_y              = 121,
+    RETROK_z              = 122,
+    RETROK_LEFTBRACE      = 123,
+    RETROK_BAR            = 124,
+    RETROK_RIGHTBRACE     = 125,
+    RETROK_TILDE          = 126,
+    RETROK_DELETE         = 127,
+    RETROK_KP0            = 256,
+    RETROK_KP1            = 257,
+    RETROK_KP2            = 258,
+    RETROK_KP3            = 259,
+    RETROK_KP4            = 260,
+    RETROK_KP5            = 261,
+    RETROK_KP6            = 262,
+    RETROK_KP7            = 263,
+    RETROK_KP8            = 264,
+    RETROK_KP9            = 265,
+    RETROK_KP_PERIOD      = 266,
+    RETROK_KP_DIVIDE      = 267,
+    RETROK_KP_MULTIPLY    = 268,
+    RETROK_KP_MINUS       = 269,
+    RETROK_KP_PLUS        = 270,
+    RETROK_KP_ENTER       = 271,
+    RETROK_KP_EQUALS      = 272,
+    RETROK_UP             = 273,
+    RETROK_DOWN           = 274,
+    RETROK_RIGHT          = 275,
+    RETROK_LEFT           = 276,
+    RETROK_INSERT         = 277,
+    RETROK_HOME           = 278,
+    RETROK_END            = 279,
+    RETROK_PAGEUP         = 280,
+    RETROK_PAGEDOWN       = 281,
+    RETROK_F1             = 282,
+    RETROK_F2             = 283,
+    RETROK_F3             = 284,
+    RETROK_F4             = 285,
+    RETROK_F5             = 286,
+    RETROK_F6             = 287,
+    RETROK_F7             = 288,
+    RETROK_F8             = 289,
+    RETROK_F9             = 290,
+    RETROK_F10            = 291,
+    RETROK_F11            = 292,
+    RETROK_F12            = 293,
+    RETROK_NUMLOCK        = 300,
+    RETROK_CAPSLOCK       = 301,
+    RETROK_SCROLLOCK      = 302,
+    RETROK_RSHIFT         = 303,
+    RETROK_LSHIFT         = 304,
+    RETROK_RCTRL          = 305,
+    RETROK_LCTRL          = 306,
+    RETROK_RALT           = 307,
+    RETROK_LALT           = 308,
+    RETROK_LSUPER         = 311,
+    RETROK_RSUPER         = 312,
+    RETROK_MODE           = 313,
+    RETROK_HELP           = 315,
+    RETROK_PRINT          = 316,
+    RETROK_SYSREQ         = 317,
+    RETROK_BREAK          = 318,
+    RETROK_MENU           = 319,
+    RETROK_POWER          = 320
+};
 
 // Forward declaration
 struct retro_core_t;
@@ -204,6 +343,31 @@ typedef void (*retro_input_poll_t)(void);
 
 // Input state callback
 typedef int16_t (*retro_input_state_t)(unsigned port, unsigned device, unsigned index, unsigned id);
+
+// RETRO_CALLCONV macro (if not defined)
+#ifndef RETRO_CALLCONV
+#define RETRO_CALLCONV
+#endif
+
+// Log levels
+enum retro_log_level {
+    RETRO_LOG_DEBUG = 0,
+    RETRO_LOG_INFO = 1,
+    RETRO_LOG_WARN = 2,
+    RETRO_LOG_ERROR = 3,
+    RETRO_LOG_DUMMY = INT_MAX
+};
+
+// Log callback function pointer type
+typedef void (RETRO_CALLCONV *retro_log_printf_t)(enum retro_log_level level, const char* fmt, ...);
+
+// Log callback structure
+struct retro_log_callback {
+    retro_log_printf_t log;
+};
+
+// Forward declaration of log callback
+static void RETRO_CALLCONV retro_log_callback(enum retro_log_level level, const char* fmt, ...);
 
 //=============================================================================
 // Core Symbol Names
@@ -321,6 +485,9 @@ bool libretro_frontend_init(libretro_frontend_t* frontend) {
     frontend->pixel_format = RETRO_PIXEL_FORMAT_XRGB8888; // Default
     frontend->pixel_format_raw = RETRO_PIXEL_FORMAT_XRGB8888;
     
+    // Initialize keyboard state
+    memset(frontend->keyboard_state, 0, sizeof(frontend->keyboard_state));
+    
     g_frontend = frontend;
     
     return true;
@@ -350,7 +517,7 @@ bool libretro_frontend_load_core(libretro_frontend_t* frontend, const char* core
         return false;
     }
     
-    // Load symbols
+    // Load symbols for callback setters (we'll set them later, matching RetroArch's sequence)
     typedef void (*retro_set_environment_t)(retro_environment_t);
     typedef void (*retro_set_video_refresh_t)(retro_video_refresh_t);
     typedef void (*retro_set_audio_sample_t)(retro_audio_sample_t);
@@ -374,22 +541,15 @@ bool libretro_frontend_load_core(libretro_frontend_t* frontend, const char* core
         return false;
     }
     
-    // Set callbacks BEFORE loading other functions
-    // Some cores (like xrick) may check callback pointers during initialization
+    // Set environment callback early (like RetroArch does at line 4782)
+    // IMPORTANT: Set g_frontend BEFORE setting callbacks, as cores may call them immediately
+    g_frontend = frontend;
+    fprintf(stderr, "Setting environment callback (matching RetroArch sequence)...\n");
     set_env(retro_environment_callback);
-    set_video(retro_video_refresh_callback);
-    set_audio(retro_audio_sample_callback);
-    set_audio_batch(retro_audio_sample_batch_callback);
-    set_input_poll(retro_input_poll_callback);
-    set_input_state(retro_input_state_callback);
-    
-    
     frontend->has_set_environment = true;
-    frontend->has_set_video_refresh = true;
-    frontend->has_set_audio_sample = true;
-    frontend->has_set_audio_sample_batch = true;
-    frontend->has_set_input_poll = true;
-    frontend->has_set_input_state = true;
+    
+    // Note: Video/audio/input callbacks will be set AFTER loading the game (matching RetroArch)
+    // RetroArch sets them in runloop_event_load_core -> core_init_libretro_cbs (line 4636-4640)
     
     // Load core functions
     frontend->core->retro_init = (void (*)(void))dlsym(handle, SYM_RETRO_INIT);
@@ -473,6 +633,11 @@ void libretro_frontend_update_av_info(libretro_frontend_t* frontend) {
         frontend->aspect_ratio = av_info.geometry.aspect_ratio;
         
         unsigned new_sample_rate = (unsigned)av_info.timing.sample_rate;
+        // Handle 0 Hz sample rate (some cores report 0 before they're ready)
+        if (new_sample_rate == 0) {
+            fprintf(stderr, "Warning: Core reported 0 Hz sample rate, using default 44100 Hz\n");
+            new_sample_rate = 44100;
+        }
         fprintf(stderr, "Video: %ux%u (aspect: %.2f, fps: %.2f)\n", 
                 frontend->width, frontend->height, frontend->aspect_ratio, frontend->fps);
         fprintf(stderr, "Audio: %u Hz\n", new_sample_rate);
@@ -483,6 +648,9 @@ void libretro_frontend_update_av_info(libretro_frontend_t* frontend) {
             }
             frontend->audio_sample_rate = new_sample_rate;
             frontend->audio_ring_buffer_size = frontend->audio_sample_rate / 4; // ~0.25 seconds
+            if (frontend->audio_ring_buffer_size == 0) {
+                frontend->audio_ring_buffer_size = 11025; // Default to ~0.25 seconds at 44.1kHz
+            }
             frontend->audio_ring_buffer = (float*)calloc(frontend->audio_ring_buffer_size * 2, sizeof(float));
             frontend->audio_ring_read_pos = 0;
             frontend->audio_ring_write_pos = 0;
@@ -508,8 +676,59 @@ void libretro_frontend_update_av_info(libretro_frontend_t* frontend) {
     }
 }
 
+// Forward declaration for debug functions
+
 bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_path) {
-    if (!frontend || !frontend->core || !rom_path) return false;
+    if (!frontend || !frontend->core) return false;
+    
+    // Handle no-game mode (rom_path is NULL)
+    if (!rom_path) {
+        // For no-game mode, call retro_load_game with NULL
+        // According to libretro spec, cores that support no-game mode should accept NULL
+        
+        // RETROARCH SEQUENCE: Load game FIRST, then set callbacks
+        bool success = frontend->core->retro_load_game(NULL);
+        if (success) {
+            // Set callbacks AFTER loading (matching RetroArch's runloop_event_load_core)
+            if (!frontend->has_set_video_refresh) {
+                fprintf(stderr, "Setting up video/audio/input callbacks after game load (matching RetroArch)...\n");
+                typedef void (*retro_set_video_refresh_t)(retro_video_refresh_t);
+                typedef void (*retro_set_audio_sample_t)(retro_audio_sample_t);
+                typedef void (*retro_set_audio_sample_batch_t)(retro_audio_sample_batch_t);
+                typedef void (*retro_set_input_poll_t)(retro_input_poll_t);
+                typedef void (*retro_set_input_state_t)(retro_input_state_t);
+                
+                retro_set_video_refresh_t set_video = (retro_set_video_refresh_t)dlsym(frontend->core_handle, SYM_RETRO_SET_VIDEO_REFRESH);
+                retro_set_audio_sample_t set_audio = (retro_set_audio_sample_t)dlsym(frontend->core_handle, SYM_RETRO_SET_AUDIO_SAMPLE);
+                retro_set_audio_sample_batch_t set_audio_batch = (retro_set_audio_sample_batch_t)dlsym(frontend->core_handle, SYM_RETRO_SET_AUDIO_SAMPLE_BATCH);
+                retro_set_input_poll_t set_input_poll = (retro_set_input_poll_t)dlsym(frontend->core_handle, SYM_RETRO_SET_INPUT_POLL);
+                retro_set_input_state_t set_input_state = (retro_set_input_state_t)dlsym(frontend->core_handle, SYM_RETRO_SET_INPUT_STATE);
+                
+                if (set_video && set_audio && set_audio_batch && set_input_poll && set_input_state) {
+                    set_video(retro_video_refresh_callback);
+                    set_audio(retro_audio_sample_callback);
+                    set_audio_batch(retro_audio_sample_batch_callback);
+                    set_input_poll(retro_input_poll_callback);
+                    set_input_state(retro_input_state_callback);
+                    
+                    frontend->has_set_video_refresh = true;
+                    frontend->has_set_audio_sample = true;
+                    frontend->has_set_audio_sample_batch = true;
+                    frontend->has_set_input_poll = true;
+                    frontend->has_set_input_state = true;
+                } else {
+                    fprintf(stderr, "Warning: Failed to set up video/audio/input callbacks\n");
+                }
+            }
+            
+            // Update AV info after setting callbacks (matching RetroArch)
+            libretro_frontend_update_av_info(frontend);
+            frontend->rom_path = NULL;
+            frontend->rom_data = NULL;
+            frontend->rom_data_size = 0;
+        }
+        return success;
+    }
     
     if (!frontend->core->retro_load_game) {
         fprintf(stderr, "Core does not support loading games\n");
@@ -525,7 +744,6 @@ bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_p
     
     struct retro_game_info game_info = {0};
     void* rom_data = NULL;
-    size_t rom_data_size = 0;
     
     if (frontend->need_fullpath) {
         // Core wants path only, not data in memory
@@ -580,6 +798,7 @@ bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_p
         
     }
     
+    // RETROARCH SEQUENCE: Load game FIRST, then set callbacks
     // Load the game
     bool success = frontend->core->retro_load_game(&game_info);
     
@@ -597,12 +816,53 @@ bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_p
     frontend->rom_data_size = frontend->need_fullpath ? 0 : game_info.size;
     frontend->rom_path = abs_path;
     
+    // Set callbacks AFTER loading game (matching RetroArch's runloop_event_load_core)
+    if (!frontend->has_set_video_refresh) {
+        fprintf(stderr, "Setting up video/audio/input callbacks after game load (matching RetroArch)...\n");
+        typedef void (*retro_set_video_refresh_t)(retro_video_refresh_t);
+        typedef void (*retro_set_audio_sample_t)(retro_audio_sample_t);
+        typedef void (*retro_set_audio_sample_batch_t)(retro_audio_sample_batch_t);
+        typedef void (*retro_set_input_poll_t)(retro_input_poll_t);
+        typedef void (*retro_set_input_state_t)(retro_input_state_t);
+        
+        retro_set_video_refresh_t set_video = (retro_set_video_refresh_t)dlsym(frontend->core_handle, SYM_RETRO_SET_VIDEO_REFRESH);
+        retro_set_audio_sample_t set_audio = (retro_set_audio_sample_t)dlsym(frontend->core_handle, SYM_RETRO_SET_AUDIO_SAMPLE);
+        retro_set_audio_sample_batch_t set_audio_batch = (retro_set_audio_sample_batch_t)dlsym(frontend->core_handle, SYM_RETRO_SET_AUDIO_SAMPLE_BATCH);
+        retro_set_input_poll_t set_input_poll = (retro_set_input_poll_t)dlsym(frontend->core_handle, SYM_RETRO_SET_INPUT_POLL);
+        retro_set_input_state_t set_input_state = (retro_set_input_state_t)dlsym(frontend->core_handle, SYM_RETRO_SET_INPUT_STATE);
+        
+        if (set_video && set_audio && set_audio_batch && set_input_poll && set_input_state) {
+            set_video(retro_video_refresh_callback);
+            set_audio(retro_audio_sample_callback);
+            set_audio_batch(retro_audio_sample_batch_callback);
+            set_input_poll(retro_input_poll_callback);
+            set_input_state(retro_input_state_callback);
+            
+            frontend->has_set_video_refresh = true;
+            frontend->has_set_audio_sample = true;
+            frontend->has_set_audio_sample_batch = true;
+            frontend->has_set_input_poll = true;
+            frontend->has_set_input_state = true;
+        } else {
+            fprintf(stderr, "Warning: Failed to set up video/audio/input callbacks\n");
+        }
+    }
     
-    // Update AV info after game is loaded (resolution may change)
+    // Update AV info after setting callbacks (matching RetroArch)
     libretro_frontend_update_av_info(frontend);
+    
+    // DO NOT call retro_reset here - RetroArch doesn't do this
+    // VICE handles its own initialization in retro_load_game
+    // Calling retro_reset here would reset VICE's state AFTER it's initialized,
+    // clearing screen memory and other state that VICE just set up
     
     return true;
 }
+
+
+// Debug: Check all available memory regions
+
+static int frame_count = 0;
 
 /**
  * Run one frame of the core
@@ -611,6 +871,15 @@ bool libretro_frontend_load_rom(libretro_frontend_t* frontend, const char* rom_p
 void libretro_frontend_run_frame(libretro_frontend_t* frontend) {
     if (!frontend || !frontend->core || !frontend->initialized) return;
     
+    frame_count++;
+    
+    // RetroArch polls input before retro_run (for early polling cores)
+    // VICE might need this to initialize properly
+    if (frontend->has_set_input_poll && g_frontend) {
+        // Call input poll callback if set (some cores need this)
+        retro_input_poll_callback();
+    }
+    
     if (frontend->core->retro_run) {
         frontend->core->retro_run();
     }
@@ -618,6 +887,18 @@ void libretro_frontend_run_frame(libretro_frontend_t* frontend) {
     // Flush any accumulated single-sample audio after each frame
     // This ensures cores using retro_audio_sample_callback don't lose samples
     flush_single_sample_buffer();
+}
+
+/**
+ * Reset the core
+ * Calls retro_reset to reset the core state
+ */
+void libretro_frontend_reset(libretro_frontend_t* frontend) {
+    if (!frontend || !frontend->core || !frontend->initialized) return;
+    
+    if (frontend->core->retro_reset) {
+        frontend->core->retro_reset();
+    }
 }
 
 /**
@@ -647,14 +928,23 @@ void libretro_frontend_set_input(libretro_frontend_t* frontend, unsigned port, u
 }
 
 /**
+ * Set keyboard key state
+ */
+void libretro_frontend_set_keyboard_key(libretro_frontend_t* frontend, unsigned keycode, bool pressed) {
+    if (!frontend || keycode >= RETROK_LAST) return;
+    frontend->keyboard_state[keycode] = pressed;
+}
+
+/**
  * Deinitialize and cleanup the frontend
  * Unloads the core and frees all allocated resources
  */
 void libretro_frontend_deinit(libretro_frontend_t* frontend) {
     if (!frontend) return;
     
-    // Unload game if loaded
-    if (frontend->core && frontend->core->retro_unload_game) {
+    // Unload game if loaded (only if a game was actually loaded)
+    // Check if rom_path is set to determine if a game was loaded
+    if (frontend->core && frontend->core->retro_unload_game && frontend->rom_path) {
         frontend->core->retro_unload_game();
     }
     
@@ -669,7 +959,13 @@ void libretro_frontend_deinit(libretro_frontend_t* frontend) {
     }
     
     // Deinitialize core
-    if (frontend->core && frontend->core->retro_deinit) {
+    // Note: Some cores (like VICE) may have issues during deinit if no game was loaded
+    // We still need to call it to clean up resources, but it might crash
+    // The alternative is to leak resources, which is worse
+    if (frontend->core && frontend->core->retro_deinit && frontend->initialized) {
+        // Only call deinit if core was initialized
+        // VICE cores seem to crash during deinit if no game was loaded,
+        // but we need to try anyway to avoid resource leaks
         frontend->core->retro_deinit();
     }
     
@@ -746,13 +1042,34 @@ size_t libretro_frontend_get_audio_samples(libretro_frontend_t* frontend, float*
  * Handles requests from the core for system information and configuration
  */
 static bool retro_environment_callback(unsigned cmd, void* data) {
-    if (!g_frontend) return false;
     
-    // Debug output removed - callbacks are working
+    if (!g_frontend) {
+        if (cmd == RETRO_ENVIRONMENT_SET_PIXEL_FORMAT) {
+            fprintf(stderr, "ERROR: SET_PIXEL_FORMAT called but g_frontend is NULL! cmd=%u\n", cmd);
+        }
+        // Log all callbacks when g_frontend is NULL to see what's happening
+        fprintf(stderr, "WARNING: Environment callback called with cmd=%u but g_frontend is NULL\n", cmd);
+        return false;
+    }
+    
+    // Debug output for important callbacks
+    // Map command numbers to names for debugging
+    const char* cmd_name = "UNKNOWN";
+    switch (cmd) {
+        case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: cmd_name = "SET_PIXEL_FORMAT"; break;
+        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: cmd_name = "GET_SYSTEM_DIRECTORY"; break;
+        case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: cmd_name = "SET_SUPPORT_NO_GAME"; break;
+        case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: cmd_name = "GET_LOG_INTERFACE"; break;
+        default: break;
+    }
+    if (cmd == RETRO_ENVIRONMENT_SET_PIXEL_FORMAT || cmd == RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY) {
+        fprintf(stderr, "Environment callback: cmd=%u (%s)\n", cmd, cmd_name);
+    }
     
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
             unsigned* format = (unsigned*)data;
+            if (!g_frontend) return false;  // Must return false if frontend not ready
             if (g_frontend) {
                 switch (*format) {
                     case RETRO_PIXEL_FORMAT_0RGB1555: 
@@ -784,12 +1101,16 @@ static bool retro_environment_callback(unsigned cmd, void* data) {
                         break;
                 }
             }
+            // Return true to indicate we support this format
             return true;
         }
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: {
             if (!data) return false;
             const char** dir = (const char**)data;
-            *dir = "./";
+            // Use "." directory - VICE will append "/vice" to create "./vice"
+            // ROM files should be in "./vice/PLUS4/" or "./system/vice/PLUS4/"
+            static const char* system_dir = ".";
+            *dir = system_dir;
             return true;
         }
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: {
@@ -841,6 +1162,58 @@ static bool retro_environment_callback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: {
             return true;
         }
+        case 32: { // RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO (value 32)
+            // Core wants to update AV info - this is important for VICE
+            // VICE calls this after retro_load_game to set up video properly
+            if (!data) return false;
+            const struct retro_system_av_info* av_info = (const struct retro_system_av_info*)data;
+            if (g_frontend && av_info) {
+                // Update our internal AV info
+                g_frontend->width = av_info->geometry.base_width;
+                g_frontend->height = av_info->geometry.base_height;
+                g_frontend->aspect_ratio = av_info->geometry.aspect_ratio;
+                g_frontend->fps = av_info->timing.fps;
+                unsigned new_sample_rate = (unsigned)av_info->timing.sample_rate;
+                if (new_sample_rate > 0 && new_sample_rate != g_frontend->audio_sample_rate) {
+                    g_frontend->audio_sample_rate = new_sample_rate;
+                }
+                fprintf(stderr, "SET_SYSTEM_AV_INFO: %ux%u (aspect: %.2f, fps: %.2f, sample rate: %.2f Hz)\n",
+                        g_frontend->width, g_frontend->height, g_frontend->aspect_ratio, 
+                        g_frontend->fps, (double)g_frontend->audio_sample_rate);
+            }
+            return true;
+        }
+        case 37: { // RETRO_ENVIRONMENT_SET_GEOMETRY (value 37)
+            // Core wants to update geometry (similar to SET_SYSTEM_AV_INFO but without reinit)
+            if (!data) return false;
+            const struct retro_game_geometry* geom = (const struct retro_game_geometry*)data;
+            if (g_frontend && geom) {
+                g_frontend->width = geom->base_width;
+                g_frontend->height = geom->base_height;
+                g_frontend->aspect_ratio = geom->aspect_ratio;
+                fprintf(stderr, "SET_GEOMETRY: %ux%u (aspect: %.2f)\n",
+                        g_frontend->width, g_frontend->height, g_frontend->aspect_ratio);
+            }
+            return true;
+        }
+        case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: {
+            // Provide log interface so cores can log safely
+            // This prevents cores from trying to use invalid FILE* pointers
+            if (!data) return false;
+            struct retro_log_callback* log_cb = (struct retro_log_callback*)data;
+            // Provide a log callback that writes to stderr
+            log_cb->log = retro_log_callback;
+            return true;
+        }
+        case 33: // RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE
+        case 34: // RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION
+        case 35: // RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK
+        case 36: // RETRO_ENVIRONMENT_GET_INPUT_BITMASKS
+        case 38: { // RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS
+            // VICE-specific callbacks - just return true without accessing data
+            // This prevents crashes with cores that don't use these callbacks
+            return true;
+        }
         default:
             // For unknown/extended commands, return false (not supported)
             // Some cores may check return values, but returning true for unknown commands
@@ -850,13 +1223,54 @@ static bool retro_environment_callback(unsigned cmd, void* data) {
 }
 
 static void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch) {
-    if (!g_frontend || !data) return;
-    
-    static int frame_count = 0;
-    if (frame_count++ == 0) {
-        fprintf(stderr, "Video refresh: %ux%u, pitch=%zu, format=%u (raw=%u)\n", 
-                width, height, pitch, g_frontend->pixel_format, g_frontend->pixel_format_raw);
+    if (!g_frontend || !data) {
+        fprintf(stderr, "ERROR: video_callback called with NULL frontend or data!\n");
+        return;
     }
+    
+    // Skip processing if dimensions are invalid (VICE may call this during initialization)
+    if (width == 0 || height == 0) {
+        fprintf(stderr, "WARNING: video_callback called with zero dimensions: %ux%u\n", width, height);
+        return;
+    }
+    
+    static int call_count = 0;
+    static bool warned_black = false;
+    call_count++;
+    
+    // Debug: Check if data is all zeros (black screen) - only warn once
+    if (!warned_black && call_count >= 10) {
+        const uint16_t* pixels = (const uint16_t*)data;
+        int non_zero_count = 0;
+        int sample_size = (width * height < 100) ? width * height : 100;
+        for (int i = 0; i < sample_size; i++) {
+            if (pixels[i] != 0) {
+                non_zero_count++;
+                break;
+            }
+        }
+        if (non_zero_count == 0) {
+            fprintf(stderr, "WARNING: Video callback receiving all-zero (black) data after %d frames\n", call_count);
+            warned_black = true;
+        }
+    }
+    
+    static bool format_auto_detected = false;
+    
+    // Auto-detect RGB565 format if SET_PIXEL_FORMAT was never called
+    // VICE uses RGB565 (pitch = width * 2) but may not call SET_PIXEL_FORMAT
+    if (!format_auto_detected && g_frontend->pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
+        size_t expected_pitch_32bit = width * 4;
+        size_t expected_pitch_16bit = width * 2;
+        if (pitch == expected_pitch_16bit || (pitch != expected_pitch_32bit && pitch % 2 == 0)) {
+            fprintf(stderr, "Auto-detecting RGB565 format: pitch=%zu matches 16-bit (width*2=%zu), not 32-bit (width*4=%zu)\n",
+                    pitch, expected_pitch_16bit, expected_pitch_32bit);
+            g_frontend->pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+            format_auto_detected = true;
+        }
+    }
+    
+    frame_count++;
     
     // Update dimensions if changed
     if (width != g_frontend->width || height != g_frontend->height || !g_frontend->framebuffer) {
@@ -888,7 +1302,7 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
     switch (g_frontend->pixel_format) {
         case RETRO_PIXEL_FORMAT_XRGB8888: {
             // XRGB8888: 32-bit, pitch is in bytes
-            // Some cores (like SNES) report XRGB8888 but actually send RGB565
+            // Some cores (like SNES, VICE) report XRGB8888 but actually send RGB565
             // Detect this by checking if pitch matches 16-bit format better than 32-bit
             
             size_t expected_pitch_32bit = width * 4;
@@ -903,9 +1317,10 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
                                  (pitch % 2 == 0 && pitch / 2 >= width - 4 && pitch / 2 <= width + 4);
             
             
+            
             if (likely_rgb565) {
                 // Treat as RGB565 even though format says XRGB8888
-                // All RGB565 formats need R/B swap
+                // VICE uses RGB565 format
                 for (unsigned y = 0; y < height; y++) {
                     const uint8_t* src_line = (const uint8_t*)data + y * pitch;
                     uint32_t* dst_line = dst + y * width;
@@ -914,12 +1329,14 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
                         const uint16_t* src_pixel = (const uint16_t*)(src_line + x * 2);
                         uint16_t pixel = *src_pixel;
                         
-                        // Extract RGB565 components
+                        // Extract RGB565 components (little-endian byte order)
+                        // RGB565 format: RRRRR GGGGGG BBBBB (bits 15-11=R, 10-5=G, 4-0=B)
                         uint8_t r = ((pixel >> 11) & 0x1F) << 3;
                         uint8_t g = ((pixel >> 5) & 0x3F) << 2;
                         uint8_t b = (pixel & 0x1F) << 3;
                         
-                        // Convert to RGBA8888 - swap R/B for all RGB565 formats
+                        // Convert to RGBA8888 for raylib: [R, G, B, A] in memory (little-endian)
+                        // Raylib expects RGBA8888 format
                         dst_line[x] = (0xFF << 24) | (b << 16) | (g << 8) | r;
                     }
                 }
@@ -954,9 +1371,10 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
         }
         case RETRO_PIXEL_FORMAT_RGB565: {
             // RGB565: 16-bit, pitch is in bytes
-            // Both format 2 (mGBA) and format 12 (snes9x) need R/B swap
-            
+            // VICE uses RGB565 format
             size_t expected_pitch = width * 2;
+            
+            
             for (unsigned y = 0; y < height; y++) {
                 const uint8_t* src_bytes = (const uint8_t*)data + y * pitch;
                 uint32_t* dst_line = dst + y * width;
@@ -968,6 +1386,7 @@ static void retro_video_refresh_callback(const void* data, unsigned width, unsig
                         uint16_t pixel = src_line[x];
                         
                         // Extract RGB565 components (5-6-5 bits)
+                        // RGB565 format: RRRRR GGGGGG BBBBB (bits 15-11=R, 10-5=G, 4-0=B)
                         uint8_t r = ((pixel >> 11) & 0x1F) << 3;
                         uint8_t g = ((pixel >> 5) & 0x3F) << 2;
                         uint8_t b = (pixel & 0x1F) << 3;
@@ -1128,6 +1547,15 @@ static size_t retro_audio_sample_batch_callback(const int16_t* data, size_t fram
     return frames_to_write;
 }
 
+// Log callback implementation
+static void RETRO_CALLCONV retro_log_callback(enum retro_log_level level, const char* fmt, ...) {
+    (void)level; // We'll log everything to stderr regardless of level
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+}
+
 /**
  * Input poll callback
  * Called before input state queries - currently unused as raylib handles polling
@@ -1142,8 +1570,8 @@ static void retro_input_poll_callback(void) {
  * Queries the current state of an input button/axis
  * @param port Controller port (0-15)
  * @param device Device type (RETRO_DEVICE_*)
- * @param index Index (unused for joypad)
- * @param id Button/axis ID
+ * @param index Index (unused for joypad/keyboard)
+ * @param id Button/axis ID or keyboard keycode
  * @return Input state (1 for pressed, 0 for released)
  */
 static int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned index, unsigned id) {
@@ -1152,6 +1580,10 @@ static int16_t retro_input_state_callback(unsigned port, unsigned device, unsign
     
     if (device == RETRO_DEVICE_JOYPAD && port < 16 && id < 16) {
         return g_frontend->input_state[port][id] ? 1 : 0;
+    }
+    
+    if (device == RETRO_DEVICE_KEYBOARD && port < 16 && id < RETROK_LAST) {
+        return g_frontend->keyboard_state[id] ? 1 : 0;
     }
     
     return 0;

@@ -28,10 +28,94 @@
 //=============================================================================
 
 /**
+ * Maps raylib keyboard key to libretro keycode
+ * @param raylib_key Raylib key code (KEY_*)
+ * @return Libretro keycode (RETROK_*), or 0 (RETROK_UNKNOWN) if not mapped
+ */
+static unsigned map_raylib_to_retrok(int raylib_key) {
+    // Map raylib keys to libretro keycodes
+    // Raylib uses ASCII values for letters/numbers, which match RETROK codes
+    if (raylib_key >= KEY_A && raylib_key <= KEY_Z) {
+        return (unsigned)(97 + (raylib_key - KEY_A)); // RETROK_a = 97
+    }
+    if (raylib_key >= KEY_ZERO && raylib_key <= KEY_NINE) {
+        return (unsigned)(48 + (raylib_key - KEY_ZERO)); // RETROK_0 = 48
+    }
+    
+    // Special keys mapping
+    switch (raylib_key) {
+        case KEY_SPACE: return 32; // RETROK_SPACE
+        case KEY_ENTER: return 13; // RETROK_RETURN
+        case KEY_TAB: return 9; // RETROK_TAB
+        case KEY_BACKSPACE: return 8; // RETROK_BACKSPACE
+        case KEY_ESCAPE: return 27; // RETROK_ESCAPE
+        case KEY_UP: return 273; // RETROK_UP
+        case KEY_DOWN: return 274; // RETROK_DOWN
+        case KEY_LEFT: return 276; // RETROK_LEFT
+        case KEY_RIGHT: return 275; // RETROK_RIGHT
+        case KEY_F1: return 282; // RETROK_F1
+        case KEY_F2: return 283; // RETROK_F2
+        case KEY_F3: return 284; // RETROK_F3
+        case KEY_F4: return 285; // RETROK_F4
+        case KEY_F5: return 286; // RETROK_F5
+        case KEY_F6: return 287; // RETROK_F6
+        case KEY_F7: return 288; // RETROK_F7
+        case KEY_F8: return 289; // RETROK_F8
+        case KEY_F9: return 290; // RETROK_F9
+        case KEY_F10: return 291; // RETROK_F10
+        case KEY_F11: return 292; // RETROK_F11
+        case KEY_F12: return 293; // RETROK_F12
+        case KEY_LEFT_SHIFT: return 304; // RETROK_LSHIFT
+        case KEY_RIGHT_SHIFT: return 303; // RETROK_RSHIFT
+        case KEY_LEFT_CONTROL: return 306; // RETROK_LCTRL
+        case KEY_RIGHT_CONTROL: return 305; // RETROK_RCTRL
+        case KEY_LEFT_ALT: return 308; // RETROK_LALT
+        case KEY_RIGHT_ALT: return 307; // RETROK_RALT
+        case KEY_LEFT_SUPER: return 311; // RETROK_LSUPER
+        case KEY_RIGHT_SUPER: return 312; // RETROK_RSUPER
+        case KEY_APOSTROPHE: return 39; // RETROK_QUOTE
+        case KEY_COMMA: return 44; // RETROK_COMMA
+        case KEY_MINUS: return 45; // RETROK_MINUS
+        case KEY_PERIOD: return 46; // RETROK_PERIOD
+        case KEY_SLASH: return 47; // RETROK_SLASH
+        case KEY_SEMICOLON: return 59; // RETROK_SEMICOLON
+        case KEY_EQUAL: return 61; // RETROK_EQUALS
+        case KEY_LEFT_BRACKET: return 91; // RETROK_LEFTBRACKET
+        case KEY_BACKSLASH: return 92; // RETROK_BACKSLASH
+        case KEY_RIGHT_BRACKET: return 93; // RETROK_RIGHTBRACKET
+        case KEY_GRAVE: return 96; // RETROK_BACKQUOTE
+        case KEY_DELETE: return 127; // RETROK_DELETE
+        case KEY_HOME: return 278; // RETROK_HOME
+        case KEY_END: return 279; // RETROK_END
+        case KEY_PAGE_UP: return 280; // RETROK_PAGEUP
+        case KEY_PAGE_DOWN: return 281; // RETROK_PAGEDOWN
+        case KEY_INSERT: return 277; // RETROK_INSERT
+        default: return 0; // RETROK_UNKNOWN
+    }
+}
+
+/**
+ * Updates keyboard state for all keys
+ * @param frontend Pointer to the libretro frontend instance
+ */
+static void update_keyboard_input(libretro_frontend_t* frontend) {
+    // Update all keyboard keys
+    for (int key = 0; key < 512; key++) { // Raylib has keys 0-511
+        unsigned retrok = map_raylib_to_retrok(key);
+        if (retrok != 0) { // Skip RETROK_UNKNOWN
+            libretro_frontend_set_keyboard_key(frontend, retrok, IsKeyDown(key));
+        }
+    }
+}
+
+/**
  * Maps raylib keyboard input to libretro joypad buttons
  * @param frontend Pointer to the libretro frontend instance
  */
 static void update_input(libretro_frontend_t* frontend) {
+    // Update keyboard state (needed for VICE cores)
+    update_keyboard_input(frontend);
+    
     // Port 0, Joypad
     libretro_frontend_set_input(frontend, 0, RETRO_DEVICE_ID_JOYPAD_UP, IsKeyDown(KEY_UP) || IsKeyDown(KEY_W));
     libretro_frontend_set_input(frontend, 0, RETRO_DEVICE_ID_JOYPAD_DOWN, IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S));
@@ -95,18 +179,24 @@ int main(int argc, char* argv[]) {
     AudioStream audio_stream = {0};
     bool audio_stream_created = false;
     
-    // Load ROM if provided
+    // Load ROM if provided, or initialize in no-game mode
     if (rom_path) {
         if (!libretro_frontend_load_rom(&frontend, rom_path)) {
             fprintf(stderr, "Failed to load ROM\n");
             libretro_frontend_deinit(&frontend);
             return 1;
         }
-        // Update AV info after ROM is loaded (resolution may change)
-        libretro_frontend_update_av_info(&frontend);
+        // Don't reset immediately - let VICE boot naturally
+        // RetroArch doesn't reset after loading, cores handle their own initialization
+        fprintf(stderr, "ROM loaded, letting core boot naturally...\n");
     } else {
-        // Update AV info even without a game
-        libretro_frontend_update_av_info(&frontend);
+        // Try to initialize in no-game mode
+        // Use libretro_frontend_load_rom with NULL to start without a game
+        if (!libretro_frontend_load_rom(&frontend, NULL)) {
+            fprintf(stderr, "Failed to start without a game\n");
+            libretro_frontend_deinit(&frontend);
+            return 1;
+        }
     }
     
     // Get video dimensions
@@ -140,8 +230,14 @@ int main(int argc, char* argv[]) {
     // Then create audio stream now that we know the sample rate
     // Some cores report non-standard rates (like 65536 Hz), so we'll use a standard rate
     // and let the audio system handle it, or clamp to a reasonable value
-    if (!audio_stream_created && frontend.audio_sample_rate > 0) {
+    // Handle 0 Hz sample rate (use default)
+    if (!audio_stream_created) {
         unsigned sample_rate = frontend.audio_sample_rate;
+        if (sample_rate == 0) {
+            fprintf(stderr, "Warning: Sample rate is 0, using default 44100 Hz\n");
+            sample_rate = 44100;
+            frontend.audio_sample_rate = 44100;
+        }
         
         // Clamp to reasonable values if the core reports something unusual
         if (sample_rate < 8000) sample_rate = 8000;
@@ -212,6 +308,12 @@ int main(int argc, char* argv[]) {
         // Update input
         update_input(&frontend);
         
+        // Reset core if R key is pressed (for debugging/recovery)
+        if (IsKeyPressed(KEY_R)) {
+            fprintf(stderr, "Resetting core...\n");
+            libretro_frontend_reset(&frontend);
+        }
+        
         // Run one frame of the core
         libretro_frontend_run_frame(&frontend);
         
@@ -231,6 +333,7 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
+        
         
         // Update texture with new frame data
         UpdateTexture(texture, frontend.framebuffer);
